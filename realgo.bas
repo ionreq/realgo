@@ -21,6 +21,7 @@
 		auswahlmenü für alle schalter
 		schwache verbindung kappen: dritte möglichkeit: beide
 		input/print von koordinaten, sodass man über telefon/mail spielen kann
+		beispielbrett wo man auswirkugen aller schalter sieht
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -38,7 +39,6 @@
 
 	todo
 		spielen per email
-		beispielbrett wo man auswirkugen aller schalter sieht
 		starke randverbindungen
 		cut für randverbindungen
 		fullscreen/fenster auswahl
@@ -872,7 +872,7 @@ Sub drawmenu ()
 	Locate 32,3 : Print "8) connection cutting: ";tc(togglecut)
 	Locate 34,3 : Print "9) weak connection groups: ";ts(togglegrp)
 	Locate 36,3 : Print "0) weak connection area: ";ts(togglearea)
-	
+
 	Locate 40,3 : Print Using "last move: #### ####";lastmovex;lastmovey
 End Sub
 
@@ -927,10 +927,10 @@ Sub main ()
 		searchnearest (x, y)		' byref!
 
 		If setpossible (x, y)=1 Then
-			If lbuttoncnt=0 Then
-				If wantinput=0 Then drawstone (x, y, 0, stonenr)		' draw hovering stone
-			Else
+			If lbuttoncnt=1 Then
 				setstone (x, y)		' add stone
+			Else
+				If wantinput=0 Then drawstone (x, y, 0, stonenr)		' draw hovering stone
 			EndIf
 		EndIf
 
