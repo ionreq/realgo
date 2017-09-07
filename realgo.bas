@@ -8,38 +8,40 @@
 		anzahl freiheiten von gruppen berechnen und auf die steine drucken
 		nur andersfarbige steine fangen, gleichfarbige nicht
 		stein nur setzen wenns geht
-		näheste freiheit zum mauszeiger suchen
+		nÃ¤heste freiheit zum mauszeiger suchen
 		save/load zum testen
 		verbindungen zum rand
 		bei killstones auch con killen
 		territorium berechnen
 		einflussbereich, freiheiten, verbindungen, etc alles ein/ausblendbar
 		calcarea direkt auf brett zeichnen
-		schwache verbindungen kappen durch kürzere
-		schwache verbindungen zählen für gruppierung ja/nein
-		schwache verbindungen zählen für gebiet ja/nein
-		auswahlmenü für alle schalter
+		schwache verbindungen kappen durch kÃ¼rzere
+		schwache verbindungen zÃ¤hlen fÃ¼r gruppierung ja/nein
+		schwache verbindungen zÃ¤hlen fÃ¼r gebiet ja/nein
+		auswahlmenÃ¼ fÃ¼r alle schalter
+		schwache verbindung kappen: dritte mÃ¶glichkeit: beide
+		input/print von koordinaten, sodass man Ã¼ber telefon/mail spielen kann
 
 	evtl
-		freiheiten als schwarze und weiße freiheiten anzeigen
-		stein der beim schlagen selber 0 freiheiten hat, überlebt
+		freiheiten als schwarze und weiÃŸe freiheiten anzeigen
+		stein der beim schlagen selber 0 freiheiten hat, Ã¼berlebt
 			dazu einfach zuerst nur freiheiten vom gegner checken und evtl killen, dann erst eigene
 		ko regel: wenn vorher ein einzelner stein geschlagen wurde,
-			kann der nicht sofort im nächsten zug ersetzt werden,
-			d.h. setzen in den kreis ist nicht möglich
+			kann der nicht sofort im nÃ¤chsten zug ersetzt werden,
+			d.h. setzen in den kreis ist nicht mÃ¶glich
 		opengl als anzeige
 			multisample
 			linien von verbindungen dick
-			zoom/pan möglich
+			zoom/pan mÃ¶glich
 			freiheiten als gaussbuckel darstellen, evtl mit variabler breite
-		steine ausblenden (für area besser sichtbar)
+		steine ausblenden (fÃ¼r area besser sichtbar)
 
 	todo
+		spielen per email
 		beispielbrett wo man auswirkugen aller schalter sieht
 		starke randverbindungen
-		cut für randverbindungen
+		cut fÃ¼r randverbindungen
 		fullscreen/fenster auswahl
-		spielen per email
 
 '/
 
@@ -110,6 +112,8 @@ Dim Shared As Integer showinf, showlib, showweak, showstrong, shownum		' toggle 
 Dim Shared As Integer showarea
 
 Dim Shared As Integer togglecut, togglegrp, togglearea		' toggle switches for variations
+
+Dim Shared As Integer lastmovex, lastmovey
 
 
 Declare Sub main
@@ -184,7 +188,7 @@ End Function
 ' return stone color from stone number
 '
 Function stonecolor (s As Integer) As Integer
-	If s Mod 2=0 Then Return CBLACK Else Return CWHITE
+	If s Mod 2=0 Then Return CWHITE Else Return CBLACK
 End Function
 
 
@@ -377,7 +381,6 @@ Sub drawstone (mx As Integer, my As Integer, cp As Integer, sn As Integer)
 			Next
 		EndIf
 	Next
-
 End Sub
 
 
@@ -439,15 +442,14 @@ End Sub
 '
 Sub makeconnections ()
 	Dim As Integer t, d, x, y, x2, y2
-	Dim As Double dx, dy
-	Dim As Double w
+	Dim As Double dx, dy, w
 
 	For t = 0 To MAXSTONES-1
 		x = stones(t).x
 		y = stones(t).y
 		If x>0 Then
 			For d = 0 To MAXSTONES-1
-				If t Mod 2=d Mod 2 And t<>d Then
+				If (t Mod 2=d Mod 2) And t<>d Then
 					x2 = stones(d).x
 					y2 = stones(d).y
 					If x2>0 Then
@@ -479,36 +481,40 @@ Sub drawconnections ()
 	For t = 0 To MAXSTONES-1
 		x = stones(t).x
 		y = stones(t).y
-		For d = 0 To MAXSTONES-1
-			x2 = stones(d).x
-			y2 = stones(d).y
-			If con(t,d)=2 Then
-				If showstrong Then
-					dx = x2-x
-					dy = y2-y
-					w = Sqr(dx^2+dy^2)
-					dx /= w
-					dy /= w
-					Line(BX+x+dy*5,BY+y-dx*5)-(BX+x2+dy*5,BY+y2-dx*5),col(stonecolor(d))
-				Else
-					If showweak Then Line(BX+x,BY+y)-(BX+x2,BY+y2),col(stonecolor(d))
+		If x>0 Then
+			For d = 0 To MAXSTONES-1
+				x2 = stones(d).x
+				y2 = stones(d).y
+				If x2>0 Then
+					If con(t,d)=2 Then
+						If showstrong Then
+							dx = x2-x
+							dy = y2-y
+							w = Sqr(dx^2+dy^2)
+							dx /= w
+							dy /= w
+							Line(BX+x+dy*5,BY+y-dx*5)-(BX+x2+dy*5,BY+y2-dx*5),col(stonecolor(d))
+						Else
+							If showweak Then Line(BX+x,BY+y)-(BX+x2,BY+y2),col(stonecolor(d))
+						EndIf
+					ElseIf con(t,d)=1 Then
+						If showweak Then Line(BX+x,BY+y)-(BX+x2,BY+y2),col(stonecolor(d))
+					EndIf
 				EndIf
-			ElseIf con(t,d)=1 Then
-				If showweak Then Line(BX+x,BY+y)-(BX+x2,BY+y2),col(stonecolor(d))
-			EndIf
-		Next
-		If showweak Then
-			If x<RR+DD Then
-				Line(BX+x,BY+y)-(BX,BY+y),col(stonecolor(t))
-			EndIf
-			If x>=BAS-RR-DD Then
-				Line(BX+x,BY+y)-(BX+BAS-1,BY+y),col(stonecolor(t))
-			EndIf
-			If y<RR+DD Then
-				Line(BX+x,BY+y)-(BX+x,BY),col(stonecolor(t))
-			EndIf
-			If y>=BAS-RR-DD Then
-				Line(BX+x,BY+y)-(BX+x,BY+BAS-1),col(stonecolor(t))
+			Next
+			If showweak Then
+				If x<RR+DD Then
+					Line(BX+x,BY+y)-(BX,BY+y),col(stonecolor(t))
+				EndIf
+				If x>=BAS-RR-DD Then
+					Line(BX+x,BY+y)-(BX+BAS-1,BY+y),col(stonecolor(t))
+				EndIf
+				If y<RR+DD Then
+					Line(BX+x,BY+y)-(BX+x,BY),col(stonecolor(t))
+				EndIf
+				If y>=BAS-RR-DD Then
+					Line(BX+x,BY+y)-(BX+x,BY+BAS-1),col(stonecolor(t))
+				EndIf
 			EndIf
 		EndIf
 	Next
@@ -551,31 +557,42 @@ Sub cutconnections ()
 	Dim As Integer x3, y3, x4, y4
 
 	For t1 = 0 To MAXSTONES-1
-		For d1 = 0 To MAXSTONES-1
-			If con(t1,d1)>0 Then
-				x1 = stones(t1).x
-				y1 = stones(t1).y
+		x1 = stones(t1).x
+		y1 = stones(t1).y
+		If x1>0 Then
+			For d1 = 0 To MAXSTONES-1
 				x2 = stones(d1).x
 				y2 = stones(d1).y
-				dx = x2-x1
-				dy = y2-y1
-				dd1 = dx^2+dy^2
-				For t2 = 0 To MAXSTONES-1
-					For d2 = 0 To MAXSTONES-1
-						If con(t2,d2)>0 Then
-							x3 = stones(t2).x
-							y3 = stones(t2).y
-							x4 = stones(d2).x
-							y4 = stones(d2).y
-							dx = x4-x3
-							dy = y4-y3
-							dd2 = dx^2+dy^2
-							If dd2<dd1 And cutting (x1,y1,x2,y2,x3,y3,x4,y4) Then con(t1,d1) = 0
+				If x2>0 And con(t1,d1)>0 Then
+					dx = x2-x1
+					dy = y2-y1
+					dd1 = dx^2+dy^2
+					For t2 = 0 To MAXSTONES-1
+						x3 = stones(t2).x
+						y3 = stones(t2).y
+						If x3>0 Then
+							For d2 = 0 To MAXSTONES-1
+								x4 = stones(d2).x
+								y4 = stones(d2).y
+								If x4>0 And con(t2,d2)>0 Then
+									dx = x4-x3
+									dy = y4-y3
+									dd2 = dx^2+dy^2
+									If cutting (x1,y1,x2,y2,x3,y3,x4,y4) Then
+										If togglecut=1 Then
+											If dd2<dd1 Then con(t1,d1) = 0 : con(d1,t1) = 0
+										ElseIf togglecut=2 Then
+											con(t1,d1) = 0 : con(d1,t1) = 0
+											con(t2,d2) = 0 : con(d2,t2) = 0
+										EndIf
+									EndIf
+								EndIf
+							Next
 						EndIf
 					Next
-				Next
-			EndIf
-		Next
+				EndIf
+			Next
+		EndIf
 	Next
 End Sub
 
@@ -837,10 +854,10 @@ End Function
 ' draw the menu for the switches
 '
 Sub drawmenu ()
-	Dim As String ts(2)
+	Dim As String ts(2), tc(3)
 
-	ts(0) = "off"
-	ts(1) = "on"
+	ts(0) = "off" : ts(1) = "on"
+	tc(0) = "none" : tc(1) = "longer" : tc(2) = "both"
 
 	Color col(CBOARD),col(CBACKGROUND)
 
@@ -852,16 +869,30 @@ Sub drawmenu ()
 	Locate 26,3 : Print "4) show weak connections: ";ts(showweak)
 	Locate 28,3 : Print "5) show strong connections: ";ts(showstrong)
 
-	Locate 32,3 : Print "8) connection cutting: ";ts(togglecut)
+	Locate 32,3 : Print "8) connection cutting: ";tc(togglecut)
 	Locate 34,3 : Print "9) weak connection groups: ";ts(togglegrp)
 	Locate 36,3 : Print "0) weak connection area: ";ts(togglearea)
+	
+	Locate 40,3 : Print Using "last move: #### ####";lastmovex;lastmovey
+End Sub
+
+
+' adds a stone to the board
+'
+Sub setstone (x As Integer, y As Integer)
+	drawstone (x, y, 1, stonenr)
+	stones(stonenr).x = x
+	stones(stonenr).y = y
+	stonenr += 1
+	lastmovex = x
+	lastmovey = y
 End Sub
 
 
 ' main
 '
 Sub main ()
-	Dim As Integer x, y, wheel, button, lbuttoncnt, t
+	Dim As Integer x, y, wheel, button, lbuttoncnt, t, wantinput
 	Dim As String i
 
 	ScreenRes 1100,650,32,2
@@ -897,17 +928,14 @@ Sub main ()
 
 		If setpossible (x, y)=1 Then
 			If lbuttoncnt=0 Then
-				drawstone (x, y, 0, stonenr)		' draw hovering stone
+				If wantinput=0 Then drawstone (x, y, 0, stonenr)		' draw hovering stone
 			Else
-				drawstone (x, y, 1, stonenr)		' set stone
-				stones(stonenr).x = x
-				stones(stonenr).y = y
-				stonenr += 1
+				setstone (x, y)		' add stone
 			EndIf
 		EndIf
 
 		makeconnections ()
-		If togglecut Then cutconnections ()
+		If togglecut>0 Then cutconnections ()
 		drawconnections ()
 
 		checklibs ()
@@ -919,6 +947,19 @@ Sub main ()
 
 		If showarea Then calcarea ()
 
+
+		If wantinput Then		' manual input of coordinates of stone to set
+			Flip
+			ScreenSet
+			Color col(stonecolor(stonenr)),col(CBOARD)
+			Line(2*8,42*8)-(30*8,46*8),col(CBOARD),bf
+			Locate 44,4 : Input "input x,y: ",x,y
+			setstone (x, y)
+			wantinput = 0
+			ScreenSet 1,0
+		EndIf
+
+
 		i = Inkey
 		If i=Chr(27) Then Exit Do
 
@@ -929,6 +970,7 @@ Sub main ()
 			t = findneareststone (x, y)
 			If t>0 Then killstone (t) : redrawboard ()
 		EndIf
+		If i="i" Then wantinput = 1
 
 		If i="f" Then showarea Xor=1
 
@@ -938,7 +980,7 @@ Sub main ()
 		If i="4" Then showweak Xor= 1
 		If i="5" Then showstrong Xor= 1
 
-		If i="8" Then togglecut Xor= 1
+		If i="8" Then togglecut += 1 : togglecut Mod= 3
 		If i="9" Then togglegrp Xor= 1
 		If i="0" Then togglearea Xor= 1
 
