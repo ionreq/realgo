@@ -1,10 +1,10 @@
 RealGo
 ------
 
-RealGo is a generalization of the board game go.
-While in go the stones are placed on a grid, in RealGo they can be placed anywhere on the board.
+RealGo is a generalization of the board game Go.
+While in Go the stones are placed on a grid, in RealGo they can be placed anywhere on the board.
 Since the goal of the game is to surround more territory than the opponent, RealGo is only possible on a computer.
-The exact area calculation would not be possible on a real go board.
+The exact area calculation would not be possible on a real Go board.
 
 The name RealGo is ironic in two ways, the first of which I just explained.
 Additionally, RealGo does not actually work with real numbers or floating point numbers, but also works on a (finer) grid and with (big) integer numbers.
@@ -17,13 +17,13 @@ But as soon as you store the coordinates of such points you are effectively on a
 Although not impossible this seemed too difficult after a while and I thought of a way to put everything on a grid.
 
 My line of thought was as follows:
-For every concept in go we have to find an analogue, so the analogue of a grid is the entire board. One. Ok, great, got that. So far so good!
+For every concept in Go we have to find an analogue, so the analogue of a grid is the entire board. One. Ok, great, got that. So far so good!
 Next.
 The analogue of a stone would be...... a disc! Of course, what else. This is going surprisingly well!
 Oh oh, but now we're in trouble. What is a liberty and how to kill stones?
 Hm. Well, let's make a cup of black tea first...
 
-So in go a single stone has four liberties and to kill it, you place four other stones around it.
+So in Go a single stone has four liberties and to kill it, you place four other stones around it.
 Wouldn't it be great if this was the same in RealGo? What would the concept of liberties have to be like, so that this comes out?
 What happens with four surrounding stones that doesn't happen with three or five?
 If you imagine it graphically, you can place six stones touching around the one stone in the middle.
@@ -35,7 +35,7 @@ With three you can do that, but with four not anymore.
 Four stones can easily be placed in a way that everything is closed off around the middle stone.
 So we could define a circular curve around the middle stone, that gets covered by the surrounding stones.
 And if no part of the remaining curve is longer than a stone diameter, the stone is killed.
-The curve is the analogue of the four liberties of go.
+The curve is the analogue of the four liberties of Go.
 
 But wait, there's something else with liberties:
 You have to be able to place a stone on them.
@@ -49,11 +49,11 @@ This way the situation is symmetrical for touching stones:
 For every place on the liberties of stone 1 there is one place on the liberties of stone 2 and it is the center of stone 1.
 
 The next concept we have to think about is connection. When are two stones considered connected?
-In go it is easy, either they are diagonal to each other, or a stone fits in between or it doesn't.
+In Go it is easy, either they are diagonal to each other, or a stone fits in between or it doesn't.
 So the distance between two stones should be decisive here, for sure it means something when no stone fits between two stones anymore.
 If we call this a connection, maybe imagine it with a line, then suddenly we realize that something else can happen in RealGo:
 There can be two other stones with a connection line crossing the first one.
-What to do now? Is this good or bad? Is this the analogue of cutting in go?
+What to do now? Is this good or bad? Is this the analogue of cutting in Go?
 So many questions, so much uncertainty. We need another cup of strong, hot, black tea (two bags).
 
 Well in the end I decided that I couldn't decide: you can switch variations in RealGo.
@@ -82,13 +82,13 @@ If you think about it, it is clear. You simply cannot place a stone there, perio
 So what are groups now? Again it's hard to decide whether they should be connected by all connections or just the strong ones.
 I made it switchable.
 And how is territory defined? Only strong connections or both as borders? I made a switch.
-But actually this is easier: territory in go is defined by a closed area on a four connected grid, i.e. two diagonal stones also close it off.
+But actually this is easier: territory in Go is defined by a closed area on a four connected grid, i.e. two diagonal stones also close it off.
 A stone does not fit between two weakly connected stones in RealGo, so this would hint strongly at weak connections for the borders of territories.
 
-This wraps it up for the basic concepts I think, but there are also some emergent phenomena in go, so let's see how they translate.
+This wraps it up for the basic concepts I think, but there are also some emergent phenomena in Go, so let's see how they translate.
 Ladders for example.
 Well I'm afraid they don't exist in RealGo anymore.
-The reason why a ladder works in go is that the guy in the middle needs two moves to crawl diagonally.
+The reason why a ladder works in Go is that the guy in the middle needs two moves to crawl diagonally.
 So his opponent can place one stone on either side.
 In RealGo you can crawl "diagonally" and indeed in any direction with one move always.
 The guy who wants to place stones to your left and then to your right is out of luck, you are faster.
@@ -100,7 +100,7 @@ And suicide is not allowed (or counts as a pass).
 A ko means that you can't replace a killed stone in the following move, you have to play elsewhere.
 Well this should translate to: you can't play in the vicinity of one stoneradius in the next move.
 False eyes, bamboo joints, race to kill, etc. there's still much to explore.
-I'm only a poor developer and a miserable go player.
+I'm only a poor developer and a miserable Go player.
 And now I'm getting a tea. You know.
 
 compile with www.freebasic.net
