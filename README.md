@@ -1,6 +1,3 @@
-# realgo
-a generalization of the board game go
-
 RealGo
 ------
 
@@ -38,7 +35,7 @@ With three you can do that, but with four not anymore.
 Four stones can easily be placed in a way that everything is closed off around the middle stone.
 So we could define a circular curve around the middle stone, that gets covered by the surrounding stones.
 And if no part of the remaining curve is longer than a stone diameter, the stone is killed.
-The curve is the analogue of the four libierties of go.
+The curve is the analogue of the four liberties of go.
 
 But wait, there's something else with liberties:
 You have to be able to place a stone on them.
@@ -61,6 +58,7 @@ So many questions, so much uncertainty. We need another cup of strong, hot, blac
 
 Well in the end I decided that I couldn't decide: you can switch variations in RealGo.
 In one variant the shorter of the two connections cuts the longer one, in an other it doesn't.
+In a third variant both are cut.
 But we are not done with distances and connections, there is a second decisive distance.
 
 So if you wanted to avoid cutting in this manner, you would move the two stones closer together, right?
@@ -78,7 +76,7 @@ Do you see it? Do you SEE it? Tell me that you see it! OK.
 This is not because these places are covered by stones themselves, but because you couldn't place a stone there without overlapping with an other stone.
 So the liberties get killed already by something else, and this is what I would call the influence of a stone.
 It turns out that this is exactly the region between the stone and its liberty curve.
-If you think about it, it is clear. You simply cannont place a stone there, period. So this region has to kill liberties.
+If you think about it, it is clear. You simply cannot place a stone there, period. So this region has to kill liberties.
 (Don't worry, all the good things about liberties are untouched by that.)
 
 So what are groups now? Again it's hard to decide whether they should be connected by all connections or just the strong ones.
@@ -105,5 +103,5 @@ False eyes, bamboo joints, race to kill, etc. there's still much to explore.
 I'm only a poor developer and a miserable go player.
 And now I'm getting a tea. You know.
 
-
+compile with www.freebasic.net
 
