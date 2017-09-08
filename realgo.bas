@@ -24,6 +24,7 @@
 		beispielbrett wo man auswirkugen aller schalter sieht
 		starke randverbindungen
 		cut für randverbindungen
+		con komplett durch conl ersetzen
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -97,8 +98,6 @@ Dim Shared As Integer maxlib		' number of liberties of a stone
 Dim Shared As UByte ba(BAS,BAS)		' board array
 Dim Shared As UByte bb(BAS,BAS)		' board array for area calc
 Dim Shared As UByte sa(SAS,SAS)		' stone array
-
-Dim Shared As UByte con(MAXSTONES,MAXSTONES)		' connection matrix, 0=no connection 1=weak 2=strong
 
 Type connection
 	As Integer c		' color 1=black 2=white
@@ -482,10 +481,8 @@ Sub makeconnections ()
 						dy = y2-y
 						w = Sqr(dx^2+dy^2)
 						If w<Sqr(2)*DD Then
-							con(t,d) = 2 : con(d,t) = 2
 							newconl (stonecolor(t), 2, t, d, x, y, x2, y2)
 						ElseIf w<2*DD Then
-							con(t,d) = 1 : con(d,t) = 1
 							newconl (stonecolor(t), 1, t, d, x, y, x2, y2)
 						EndIf
 					EndIf
@@ -607,11 +604,11 @@ Sub cutconnections ()
 
 			If cutting (x1,y1,x2,y2,x3,y3,x4,y4) Then
 				If togglecut=1 Then
-					If dd2<=dd1 Then con(t1,d1) = 0 : con(d1,t1) = 0 : conl(a).s = 0
-					If dd1<=dd2 Then con(t2,d2) = 0 : con(d2,t2) = 0 : conl(b).s = 0
+					If dd2<=dd1 Then conl(a).s = 0
+					If dd1<=dd2 Then conl(b).s = 0
 				ElseIf togglecut=2 Then
-					con(t1,d1) = 0 : con(d1,t1) = 0 : conl(a).s = 0
-					con(t2,d2) = 0 : con(d2,t2) = 0 : conl(b).s = 0
+					conl(a).s = 0
+					conl(b).s = 0
 				EndIf
 			EndIf
 
@@ -634,13 +631,13 @@ Sub grouplibs ()
 			grp(t) = gnr
 			Do
 				gef = 0
-				For y = 0 To MAXSTONES-1		' copy grp number to connected stones
-					For x = 0 To MAXSTONES-1
-						If grp(x)=gnr And con(x,y)>1-togglegrp And grp(y)=0 Then
-							grp(y) = gnr
-							gef = 1
-						EndIf
-					Next
+				For d = 0 To nconl-1		' copy grp number to connected stones
+					x = conl(d).t
+					y = conl(d).d
+					If y>0 And conl(d).s>1-togglegrp Then
+						If grp(x)=gnr And grp(y)=0 Then grp(y) = gnr : gef = 1
+						If grp(y)=gnr And grp(x)=0 Then grp(x) = gnr : gef = 1
+					EndIf
 				Next
 			Loop While gef>0		' until no more found
 			gnr += 1
@@ -694,10 +691,6 @@ Sub killstone (t As Integer)
 	Dim As Integer d
 	stones(t).x = 0
 	stones(t).y = 0
-	For d = 0 To MAXSTONES-1
-		con(d,t) = 0
-		con(t,d) = 0
-	Next
 End Sub
 
 
