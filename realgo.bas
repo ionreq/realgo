@@ -22,6 +22,8 @@
 		schwache verbindung kappen: dritte möglichkeit: beide
 		input/print von koordinaten, sodass man über telefon/mail spielen kann
 		beispielbrett wo man auswirkugen aller schalter sieht
+		starke randverbindungen
+		cut für randverbindungen
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -30,18 +32,18 @@
 		ko regel: wenn vorher ein einzelner stein geschlagen wurde,
 			kann der nicht sofort im nächsten zug ersetzt werden,
 			d.h. setzen in den kreis ist nicht möglich
-		opengl als anzeige
-			multisample
-			linien von verbindungen dick
-			zoom/pan möglich
-			freiheiten als gaussbuckel darstellen, evtl mit variabler breite
+			dazu muss im savefile gespeichert werden wo das war
 		steine ausblenden (für area besser sichtbar)
+		cut mit d1=d2 könnte auch bleiben. evtl schalter dafür
+		fullscreen/fenster auswahl
 
 	todo
+		opengl als anzeige
+			multisample
+			linien von verbindungen dick (als quads)
+			zoom/pan möglich
+			freiheiten als gaussbuckel darstellen, evtl mit variabler breite
 		spielen per email
-		starke randverbindungen
-		cut für randverbindungen
-		fullscreen/fenster auswahl
 
 '/
 
@@ -51,6 +53,8 @@ Const BX = 400			' board offset on screen
 Const BY = 20
 
 Const MAXSTONES = BS^2		' maxiumum number of stones
+
+Const MAXCONS = MAXSTONES*3		' maximum number of connections
 
 Const RR = 23			' radius stone
 Const DD = 2*RR+1		' diameter stone
@@ -84,8 +88,9 @@ Type stone
 	As Integer x, y		' 0=not there, positions start at 1*RR
 	As Integer f			' liberties
 End Type
-
 Dim Shared As stone stones(MAXSTONES)		' stone positions
+
+Dim Shared As Integer stonenr		' move number, starts with 1=black
 
 Dim Shared As Integer maxlib		' number of liberties of a stone
 
@@ -95,25 +100,29 @@ Dim Shared As UByte sa(SAS,SAS)		' stone array
 
 Dim Shared As UByte con(MAXSTONES,MAXSTONES)		' connection matrix, 0=no connection 1=weak 2=strong
 
-Dim Shared As Integer stonenr		' move number, starts with 1=black
-
+Type connection
+	As Integer c		' color 1=black 2=white
+	As Integer s		' 0=not there, strength 1=weak 2=strong
+	As Integer t, d	' stone numbers, 0=edge
+	As Integer x1, y1, x2, y2
+End Type
+Dim Shared As connection conl(MAXCONS)		' connection lines
+Dim Shared As Integer nconl		' counter
 
 Const QUSIZE = 10000		' queue for flood fill
 
 Type queue
-	As Integer fp, bp
-	As Integer x(QUSIZE), y(QUSIZE)
+	As Integer fp, bp		' front back pointers
+	As Integer x(QUSIZE), y(QUSIZE)		' pixel to fill
 End Type
-
 Dim Shared As queue qu
-
 
 Dim Shared As Integer showinf, showlib, showweak, showstrong, shownum		' toggle switches for display
 Dim Shared As Integer showarea
 
 Dim Shared As Integer togglecut, togglegrp, togglearea		' toggle switches for variations
 
-Dim Shared As Integer lastmovex, lastmovey
+Dim Shared As Integer lastmovex, lastmovey	' coos of last stone set
 
 
 Declare Sub main
@@ -438,34 +447,71 @@ Sub checklibs ()
 End Sub
 
 
+' add a line to conl
+'
+Sub newconl (c As Integer, s As Integer, t As Integer, d As Integer, x1 As Integer, y1 As Integer, x2 As Integer, y2 As Integer)
+	conl(nconl).c = c
+	conl(nconl).s = s
+	conl(nconl).t = t
+	conl(nconl).d = d
+	conl(nconl).x1 = x1
+	conl(nconl).y1 = y1
+	conl(nconl).x2 = x2
+	conl(nconl).y2 = y2
+	nconl += 1
+End Sub
+
+
 ' put values in con depending on stone distances
 '
 Sub makeconnections ()
 	Dim As Integer t, d, x, y, x2, y2
 	Dim As Double dx, dy, w
 
+	nconl = 0
 	For t = 0 To MAXSTONES-1
 		x = stones(t).x
 		y = stones(t).y
 		If x>0 Then
-			For d = 0 To MAXSTONES-1
-				If (t Mod 2=d Mod 2) And t<>d Then
+			For d = t+1 To MAXSTONES-1
+				If t Mod 2=d Mod 2 Then
 					x2 = stones(d).x
 					y2 = stones(d).y
 					If x2>0 Then
 						dx = x2-x
 						dy = y2-y
 						w = Sqr(dx^2+dy^2)
-						dx /= w
-						dy /= w
 						If w<Sqr(2)*DD Then
-							con(t,d) = 2
+							con(t,d) = 2 : con(d,t) = 2
+							newconl (stonecolor(t), 2, t, d, x, y, x2, y2)
 						ElseIf w<2*DD Then
-							con(t,d) = 1
+							con(t,d) = 1 : con(d,t) = 1
+							newconl (stonecolor(t), 1, t, d, x, y, x2, y2)
 						EndIf
 					EndIf
 				EndIf
 			Next
+			Const RA = (2+Sqr(19))/5	' solution of a quadratic eq. for the distance of the two cutting stones
+			If x<RA*DD Then
+				newconl (stonecolor(t), 2, t, 0, x, y, 0, y)
+			ElseIf x<RR+DD Then
+				newconl (stonecolor(t), 1, t, 0, x, y, 0, y)
+			EndIf
+			If x>=BAS-RA*DD Then
+				newconl (stonecolor(t), 2, t, 0, x, y, BAS-1, y)
+			ElseIf x>=BAS-RR-DD Then
+				newconl (stonecolor(t), 1, t, 0, x, y, BAS-1, y)
+			EndIf
+			If y<RA*DD Then
+				newconl (stonecolor(t), 2, t, 0, x, y, x, 0)
+			ElseIf y<RR+DD Then
+				newconl (stonecolor(t), 1, t, 0, x, y, x, 0)
+			EndIf
+			If y>=BAS-RA*DD Then
+				newconl (stonecolor(t), 2, t, 0, x, y, x, BAS-1)
+			ElseIf y>=BAS-RR-DD Then
+				newconl (stonecolor(t), 1, t, 0, x, y, x, BAS-1)
+			EndIf
 		EndIf
 	Next
 End Sub
@@ -474,48 +520,28 @@ End Sub
 ' draw connection lines according to con
 '
 Sub drawconnections ()
-	Dim As Integer t, d, x, y, x2, y2
-	Dim As Double dx, dy
-	Dim As Double w
+	Dim As Integer t, x, y, x2, y2
+	Dim As Double dx, dy, w
 
-	For t = 0 To MAXSTONES-1
-		x = stones(t).x
-		y = stones(t).y
-		If x>0 Then
-			For d = 0 To MAXSTONES-1
-				x2 = stones(d).x
-				y2 = stones(d).y
-				If x2>0 Then
-					If con(t,d)=2 Then
-						If showstrong Then
-							dx = x2-x
-							dy = y2-y
-							w = Sqr(dx^2+dy^2)
-							dx /= w
-							dy /= w
-							Line(BX+x+dy*5,BY+y-dx*5)-(BX+x2+dy*5,BY+y2-dx*5),col(stonecolor(d))
-						Else
-							If showweak Then Line(BX+x,BY+y)-(BX+x2,BY+y2),col(stonecolor(d))
-						EndIf
-					ElseIf con(t,d)=1 Then
-						If showweak Then Line(BX+x,BY+y)-(BX+x2,BY+y2),col(stonecolor(d))
-					EndIf
-				EndIf
-			Next
-			If showweak Then
-				If x<RR+DD Then
-					Line(BX+x,BY+y)-(BX,BY+y),col(stonecolor(t))
-				EndIf
-				If x>=BAS-RR-DD Then
-					Line(BX+x,BY+y)-(BX+BAS-1,BY+y),col(stonecolor(t))
-				EndIf
-				If y<RR+DD Then
-					Line(BX+x,BY+y)-(BX+x,BY),col(stonecolor(t))
-				EndIf
-				If y>=BAS-RR-DD Then
-					Line(BX+x,BY+y)-(BX+x,BY+BAS-1),col(stonecolor(t))
-				EndIf
+	For t = 0 To nconl-1
+		x = conl(t).x1
+		y = conl(t).y1
+		x2 = conl(t).x2
+		y2 = conl(t).y2
+		If conl(t).s=2 Then
+			If showstrong Then
+				dx = x2-x
+				dy = y2-y
+				w = Sqr(dx^2+dy^2)
+				dx /= w
+				dy /= w
+				Line(BX+x+dy*5,BY+y-dx*5)-(BX+x2+dy*5,BY+y2-dx*5),col(conl(t).c)
+				Line(BX+x-dy*5,BY+y+dx*5)-(BX+x2-dy*5,BY+y2+dx*5),col(conl(t).c)
+			Else
+				If showweak Then Line(BX+x,BY+y)-(BX+x2,BY+y2),col(conl(t).c)
 			EndIf
+		ElseIf conl(t).s=1 Then
+			If showweak Then Line(BX+x,BY+y)-(BX+x2,BY+y2),col(conl(t).c)
 		EndIf
 	Next
 End Sub
@@ -552,47 +578,44 @@ End Function
 ' removes weak connections from con matrix when they are cut by shorter ones
 '
 Sub cutconnections ()
+	Dim As Integer a, b
 	Dim As Integer t1, t2, d1, d2
-	Dim As Integer x1, y1, x2, y2, dx, dy, dd1, dd2
+	Dim As Integer x1, y1, x2, y2
 	Dim As Integer x3, y3, x4, y4
+	Dim As Integer dx, dy, dd1, dd2
 
-	For t1 = 0 To MAXSTONES-1
-		x1 = stones(t1).x
-		y1 = stones(t1).y
-		If x1>0 Then
-			For d1 = 0 To MAXSTONES-1
-				x2 = stones(d1).x
-				y2 = stones(d1).y
-				If x2>0 And con(t1,d1)>0 Then
-					dx = x2-x1
-					dy = y2-y1
-					dd1 = dx^2+dy^2
-					For t2 = 0 To MAXSTONES-1
-						x3 = stones(t2).x
-						y3 = stones(t2).y
-						If x3>0 Then
-							For d2 = 0 To MAXSTONES-1
-								x4 = stones(d2).x
-								y4 = stones(d2).y
-								If x4>0 And con(t2,d2)>0 Then
-									dx = x4-x3
-									dy = y4-y3
-									dd2 = dx^2+dy^2
-									If cutting (x1,y1,x2,y2,x3,y3,x4,y4) Then
-										If togglecut=1 Then
-											If dd2<dd1 Then con(t1,d1) = 0 : con(d1,t1) = 0
-										ElseIf togglecut=2 Then
-											con(t1,d1) = 0 : con(d1,t1) = 0
-											con(t2,d2) = 0 : con(d2,t2) = 0
-										EndIf
-									EndIf
-								EndIf
-							Next
-						EndIf
-					Next
+	For a = 0 To nconl-1
+		x1 = conl(a).x1
+		y1 = conl(a).y1
+		x2 = conl(a).x2
+		y2 = conl(a).y2
+		dx = x2-x1
+		dy = y2-y1
+		dd1 = dx^2+dy^2
+		t1 = conl(a).t
+		d1 = conl(a).d
+		For b = a+1 To nconl-1
+			x3 = conl(b).x1
+			y3 = conl(b).y1
+			x4 = conl(b).x2
+			y4 = conl(b).y2
+			dx = x4-x3
+			dy = y4-y3
+			dd2 = dx^2+dy^2
+			t2 = conl(b).t
+			d2 = conl(b).d
+
+			If cutting (x1,y1,x2,y2,x3,y3,x4,y4) Then
+				If togglecut=1 Then
+					If dd2<=dd1 Then con(t1,d1) = 0 : con(d1,t1) = 0 : conl(a).s = 0
+					If dd1<=dd2 Then con(t2,d2) = 0 : con(d2,t2) = 0 : conl(b).s = 0
+				ElseIf togglecut=2 Then
+					con(t1,d1) = 0 : con(d1,t1) = 0 : conl(a).s = 0
+					con(t2,d2) = 0 : con(d2,t2) = 0 : conl(b).s = 0
 				EndIf
-			Next
-		EndIf
+			EndIf
+
+		Next
 	Next
 End Sub
 
@@ -722,36 +745,20 @@ Sub calcarea ()
 		Next
 	Next
 
-	For t = 0 To MAXSTONES-1		' draw connection lines
-		For d = 0 To MAXSTONES-1
-			If con(t,d)>1-togglearea Then
-				x = stones(t).x
-				y = stones(t).y
-				x2 = stones(d).x
-				y2 = stones(d).y
-				linedda (x, y, x2, y2, stonecolor (t))
-			EndIf
-		Next
+	For t = 0 To nconl-1		' draw connection lines
+		If conl(t).s>1-togglearea Then
+			x = conl(t).x1
+			y = conl(t).y1
+			x2 = conl(t).x2
+			y2 = conl(t).y2
+			linedda (x, y, x2, y2, conl(t).c)
+		EndIf
 	Next
 
-	For t = 0 To MAXSTONES-1		' draw stones (one pixel at position) and lines to edges of board
+	For t = 0 To MAXSTONES-1		' draw stones (one pixel at position)
 		x = stones(t).x
 		y = stones(t).y
-		If x>0 Then
-			bb(x,y) = stonecolor (t)
-			If x<RR+DD Then
-				linedda (x, y, 0, y, stonecolor (t))
-			EndIf
-			If y<RR+DD Then
-				linedda (x, y, x, 0, stonecolor (t))
-			EndIf
-			If x>=BAS-RR-DD Then
-				linedda (x, y, BAS-1, y, stonecolor (t))
-			EndIf
-			If y>=BAS-RR-DD Then
-				linedda (x, y, x, BAS-1, stonecolor (t))
-			EndIf
-		EndIf
+		If x>0 Then bb(x,y) = stonecolor (t)
 	Next
 
 	Do
