@@ -105,3 +105,18 @@ And now I'm getting a tea. You know.
 
 compile with www.freebasic.net
 
+How to play with a friend over the net
+--------------------------------------
+
+For the first method you need linux. If you're on PC you can run ubuntu in a VirtualBox.
+Get the two programs sendemail and getmail.
+Make two email accounts, and for getmail two maildirs and two rc files.
+Put that in the source code and recompile (as for now).
+getemail should be configured to delete the mail on the server.
+
+Method two works without linux.
+All you need is a shared directory somewhere.
+That can be in your local network at home with a PC and a laptop, say, or over the internet with a dropbox style service.
+
+Now you only need a way to agree who's black and who's white. Have fun!
+
