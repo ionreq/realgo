@@ -25,6 +25,8 @@
 		starke randverbindungen
 		cut für randverbindungen
 		con komplett durch conl ersetzen
+		spielen per email (nur linux)
+		spielen per shared file folder (auch windows)
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -44,9 +46,11 @@
 			linien von verbindungen dick (als quads)
 			zoom/pan möglich
 			freiheiten als gaussbuckel darstellen, evtl mit variabler breite
-		spielen per email
 
 '/
+
+
+#Include "dir.bi"
 
 Const BS = 13			' board size
 
@@ -122,6 +126,22 @@ Dim Shared As Integer showarea
 Dim Shared As Integer togglecut, togglegrp, togglearea		' toggle switches for variations
 
 Dim Shared As Integer lastmovex, lastmovey	' coos of last stone set
+
+Dim Shared As Integer spieler, gametype
+
+Const SENDSERVER1 = "smtp.web.de"
+Const SENDUSER1 = "realgoplayer@web.de"
+Const SENDPASS1 = "realgoplayer1234"
+Const SENDSERVER2 = "smtp.gmx.de"
+Const SENDUSER2 = "realgoplayer@gmx.de"
+Const SENDPASS2 = "realgoplayer1234"
+Const GETMAILRC1 = "getmailrcweb"
+Const GETMAILDIR1 = "/home/yourname/Maildirweb/new"
+Const GETMAILRC2 = "getmailrcgmx"
+Const GETMAILDIR2 = "/home/yourname/Maildirgmx/new"
+
+Const SHAREDFILE1 = "sharedfile1.txt"
+Const SHAREDFILE2 = "sharedfile2.txt"
 
 
 Declare Sub main
@@ -889,14 +909,141 @@ Sub setstone (x As Integer, y As Integer)
 End Sub
 
 
+' get all files in the current directory. return 0 when empty
+'
+Function GetFiles (Array() As String) As Integer
+	Dim As String s
+	Dim As Integer attr, i
+	ReDim Array(0)
+
+	s = Dir("*",, @attr)
+	Do Until s=""
+		If (attr And fbHidden)=0 Then
+			i += 1
+			ReDim Preserve Array(i)
+			Array(i) = s
+		EndIf
+		s = Dir("",, @attr)
+	Loop
+	Return UBound(Array)
+End Function
+
+
+' send mail or write shared file
+'
+Sub senden (x As Integer, y As Integer)
+	If gametype=1 Then
+		x += 100
+		y += 100
+		If spieler=1 Then
+			Exec ("sendemail", "-f "+SENDUSER1+" -t "+SENDUSER1+" -u subject -m message "+Str(x)+","+Str(y)+" -s "+SENDSERVER1+":587 -o tls=yes -xu "+SENDUSER1+" -xp "+SENDPASS1)
+		ElseIf spieler=2 Then
+			Exec ("sendemail", "-f "+SENDUSER2+" -t "+SENDUSER2+" -u subject -m message "+Str(x)+","+Str(y)+" -s "+SENDSERVER2+":587 -o tls=yes -xu "+SENDUSER2+" -xp "+SENDPASS2)
+		EndIf
+	ElseIf gametype=2 Then
+		If spieler=1 Then
+			Open SHAREDFILE1 For Output As #1
+			Print #1,x,y
+			Close #1
+		ElseIf spieler=2 Then
+			Open SHAREDFILE2 For Output As #1
+			Print #1,x,y
+			Close #1
+		EndIf
+	EndIf
+End Sub
+
+
+' get mail or read shared file
+'
+Function empfangen (ByRef x As Integer, ByRef y As Integer) As Integer
+	Dim As String dateien()
+	Dim As String a
+	Dim As Integer t
+	Static As Double tim
+
+	If Timer-tim<3 Then Return 0		' check not faster than every 3 seconds
+	tim = Timer
+
+	If gametype=1 Then
+		If spieler=1 Then
+			Exec ("getmail", "-r "+GETMAILRC2)
+		ElseIf spieler=2 Then
+			Exec ("getmail", "-r "+GETMAILRC1)
+		EndIf
+		t = GetFiles (dateien())
+		If t=0 Then Return 0
+		Open dateien(1) For Input As #1
+		While Not EOF(1)
+			Line Input #1,a
+			If Mid(a,1,7)="message" Then x = Val(Mid(a,9,3)) : y = Val(Mid(a,13,3))
+		Wend
+		Close #1
+		Kill dateien(1)
+		x -= 100
+		y -= 100
+		Return 1
+	ElseIf gametype=2 Then
+		x = 0 : y = 0
+		If spieler=1 Then
+			Open SHAREDFILE2 For Input As #1
+			Input #1,x,y
+			Close #1
+			Kill SHAREDFILE2
+		ElseIf spieler=2 Then
+			Open SHAREDFILE1 For Input As #1
+			Input #1,x,y
+			Close #1
+			Kill SHAREDFILE1
+		EndIf
+		If x>0 And y>0 Then Return 1
+		Return 0
+	EndIf
+End Function
+
+
+' display start menu and wait for choice
+'
+Sub startmenu ()
+	Dim As String i
+
+	Color col(CBOARD),col(CBACKGROUND)
+	Cls
+	Locate 10,40 : Print "RealGo"
+
+	Locate 20,30 : Print "1) start email game as black"
+	Locate 22,30 : Print "2) start email game as white"
+	Locate 26,30 : Print "3) start shared file game as black"
+	Locate 28,30 : Print "4) start shared file game as white"
+	Locate 32,30 : Print "5) start single computer game"
+
+	gametype = 0
+	Do
+		i=Input(1)
+		If i="1" Then gametype = 1 : spieler = 1
+		If i="2" Then gametype = 1 : spieler = 2
+		If i="3" Then gametype = 2 : spieler = 1
+		If i="4" Then gametype = 2 : spieler = 2
+		If i="5" Then gametype = 3 : spieler = 0
+	Loop While gametype=0
+End Sub
+
+
 ' main
 '
 Sub main ()
-	Dim As Integer x, y, wheel, button, lbuttoncnt, t, wantinput
+	Dim As Integer x,y,wheel,button,lbuttoncnt
+	Dim As Integer t, wantinput
 	Dim As String i
 
 	ScreenRes 1100,650,32,2
-	ScreenSet 1,0
+
+	startmenu ()
+
+	If gametype=1 Then
+		If spieler=1 Then ChDir (GETMAILDIR2)
+		If spieler=2 Then ChDir (GETMAILDIR1)
+	EndIf
 
 	showinf = 1
 	showlib = 1
@@ -912,6 +1059,9 @@ Sub main ()
 	makestone ()
 
 	stonenr = 1
+
+	ScreenSet 1,0
+
 	Do
 		Color col(CWHITE),col(CBACKGROUND)
 		Cls
@@ -928,7 +1078,14 @@ Sub main ()
 
 		If setpossible (x, y)=1 Then
 			If lbuttoncnt=1 Then
-				setstone (x, y)		' add stone
+				If gametype=3 Then
+					setstone (x, y)		' add stone
+				Else
+					If spieler=1 And stonenr Mod 2=1 Or spieler=2 And stonenr Mod 2=0 Then
+						setstone (x, y)
+						senden (x, y)
+					EndIf
+				EndIf
 			Else
 				If wantinput=0 Then drawstone (x, y, 0, stonenr)		' draw hovering stone
 			EndIf
@@ -948,6 +1105,15 @@ Sub main ()
 		If showarea Then calcarea ()
 
 
+		If gametype=1 Or gametype=2 Then
+			If spieler=1 And stonenr Mod 2=0 Or spieler=2 And stonenr Mod 2=1 Then
+				If empfangen (x, y)=1 Then
+					setstone (x, y)
+				EndIf
+			EndIf
+		EndIf
+
+
 		If wantinput Then		' manual input of coordinates of stone to set
 			Flip
 			ScreenSet
@@ -960,7 +1126,7 @@ Sub main ()
 		EndIf
 
 
-		i = Inkey
+		i = InKey
 		If i=Chr(27) Then Exit Do
 
 		If i="s" Then savestones ()
@@ -986,4 +1152,5 @@ Sub main ()
 
 		Flip
 	Loop
+
 End Sub
