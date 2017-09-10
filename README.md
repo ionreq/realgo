@@ -98,7 +98,7 @@ What about eyes? A group that has two eyes lives, one eye dies.
 Same in RealGo. The other eye is where your group still has liberties (even if it's only a 0d mathematical point), when all other liberties are occupied.
 And suicide is not allowed (or counts as a pass).
 A ko means that you can't replace a killed stone in the following move, you have to play elsewhere.
-Well this should translate to: you can't play in the vicinity of one stoneradius in the next move.
+Well this should translate to: you can't play in the vicinity of one stone radius in the next move.
 False eyes, bamboo joints, race to kill, etc. there's still much to explore.
 I'm only a poor developer and a miserable Go player.
 And now I'm getting a tea. You know.
@@ -117,6 +117,7 @@ getmail should be configured to delete the mail on the server.
 Method two works without linux.
 All you need is a shared directory somewhere.
 That can be in your local network at home with a PC and a laptop, say, or over the internet with a dropbox style service.
+Just put the realgo.exe in there and start it from there on both computers.
 
 Now you only need a way to agree who's black and who's white. Have fun!
 
