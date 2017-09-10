@@ -27,6 +27,8 @@
 		con komplett durch conl ersetzen
 		spielen per email (nur linux)
 		spielen per shared file folder (auch windows)
+		opengl als anzeige
+		opengl: rand von board mit z=1 background color quads abschneiden
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -39,18 +41,29 @@
 		steine ausblenden (für area besser sichtbar)
 		cut mit d1=d2 könnte auch bleiben. evtl schalter dafür
 		fullscreen/fenster auswahl
+		config file mit schaltern, email namen, save file name, fullscreen/window, etc.
 
 	todo
-		opengl als anzeige
-			multisample
-			linien von verbindungen dick (als quads)
-			zoom/pan möglich
-			freiheiten als gaussbuckel darstellen, evtl mit variabler breite
+		brettgröße auswahl
+		opengl: zoom/pan möglich
+		opengl: freiheiten als gaussbuckel darstellen, evtl mit variabler breite
+			das wäre auch die lösung für transparentes inf
 
 '/
 
-
+#Include "windows.bi"
+#Include "win/mmsystem.bi"
+#Include "gl/gl.bi"
+#Include "gl/glu.bi"
+#Include "fbgfx.bi"
+#Include "string.bi"
 #Include "dir.bi"
+
+
+Const PI = 6.283185307
+
+Const SCRX = 1100		' screen size
+Const SCRY = 650
 
 Const BS = 13			' board size
 
@@ -143,15 +156,96 @@ Const GETMAILDIR2 = "/home/yourname/Maildirgmx/new"
 Const SHAREDFILE1 = "sharedfile1.txt"
 Const SHAREDFILE2 = "sharedfile2.txt"
 
+Const SAVEFILE = "stones.txt"
+
+Const LBOARD = 0				' opengl depth layers
+Const LBOARDLINES = 0.1
+Const LLIB = 0.2
+Const LINF = 0.3
+Const LSTONE = 0.4
+Const LAREA = 0.5
+Const LNUM = 0.6
+
 
 Declare Sub main
 main
 End
 
 
+' print a text at a screen position using opengl calllists
+'
+Sub mytextout (x As Double, y As Double, z As Double, s As String)
+	glRasterPos3d (x, y, z)
+	glListBase (1000)
+	glCallLists (Len(s), GL_UNSIGNED_BYTE, StrPtr(s))
+End Sub
+
+
+' glcolor translation of rgb values
+'
+Sub mycolor (c As Integer)
+	glColor3d ( ((CUInt(col(c)) Shr 16) And 255)/255, ((CUInt(col(c)) Shr 8) And 255)/255, ((CUInt(col(c)) Shr 0) And 255)/255 )
+End Sub
+
+
+' draw a circle with gl triangle
+'
+Sub mycircle (x As Double, y As Double, z As Double, r As Double)
+	Dim As Integer n, t
+
+	n = 32
+
+	glBegin (GL_TRIANGLE_FAN)
+	For t = 0 To n-1
+		glVertex3d (x+r*Cos(t*PI/n)+0.5, y+r*Sin(t*PI/n)+0.5, z)
+	Next
+	glEnd ()
+End Sub
+
+
+' draw a thick line as quad
+'
+Sub myline (x1 As Double, y1 As Double, x2 As Double, y2 As Double, c As Integer)
+	Dim As Double dx, dy, d, ex, ey, fx, fy
+
+	mycolor (c)
+	dx = x2-x1
+	dy = y2-y1
+	d = Sqr(dx^2+dy^2)
+	If d=0 Then
+		dx = 1 : dy = 1
+	Else
+		dx /= d
+		dy /= d
+	EndIf
+	ex = dx : ey = dy
+	fx = -dy : fy = dx
+	Const LW = 1.2
+	glBegin (GL_QUADS)
+	glVertex3d (x1-LW*ex-LW*fx, y1-LW*ey-LW*fy, LSTONE)
+	glVertex3d (x2+LW*ex-LW*fx, y2+LW*ey-LW*fy, LSTONE)
+	glVertex3d (x2+LW*ex+LW*fx, y2+LW*ey+LW*fy, LSTONE)
+	glVertex3d (x1-LW*ex+LW*fx, y1-LW*ey+LW*fy, LSTONE)
+	glEnd ()
+End Sub
+
+
+' draw a box
+'
+Sub mybox (x1 As Double, y1 As Double, x2 As Double, y2 As Double, z As Double, c As Integer)
+	mycolor (c)
+	glBegin (GL_QUADS)
+	glVertex3d (x1, y1, z)
+	glVertex3d (x2, y1, z)
+	glVertex3d (x2, y2, z)
+	glVertex3d (x1, y2, z)
+	glEnd ()
+End Sub
+
+
 ' draw a line from stone position to stone position for area calculation
 '
-Sub linedda (x1 As Integer, y1 As Integer, x2 As Integer, y2 As Integer, c As Integer)
+Sub linedd (x1 As Integer, y1 As Integer, x2 As Integer, y2 As Integer, c As Integer)
 	Dim As Integer dx, dy, sx, sy, er, e2
 
 	DX = Abs(X2 - X1):SX = -1:If X1 < X2 Then SX = 1
@@ -245,21 +339,29 @@ Sub initboard ()
 End Sub
 
 
-' draw the board with contents
+' draw the board
 '
 Sub drawboard ()
-	Dim As Integer x, y, c
+	Dim As Integer t, c
 
-	For y = 0 To BAS-1
-		For x = 0 To BAS-1
-			c = ba(x,y)
-			If c=CINF And showinf=0 Or c=CLIB And showlib=0 Then
-				PSet(BX+x,BY+y),col(boardcolor(x,y))
-			Else
-				PSet(BX+x,BY+y),col(c)
-			EndIf
-		Next
+	mybox (BX, BY, BX+BS*DD, BY+BS*DD, LBOARD, CBOARD)
+
+	mybox (BX-DD, BY-DD, BX, BY+BS*DD+DD, 1, CBACKGROUND)
+	mybox (BX+BS*DD, BY-DD, BX+BS*DD+DD, BY+BS*DD+DD, 1, CBACKGROUND)
+	mybox (BX, BY-DD, BX+BS*DD, BY, 1, CBACKGROUND)
+	mybox (BX, BY+BS*DD, BX+BS*DD, BY+BS*DD+DD, 1, CBACKGROUND)
+
+	For t = 1 To BS
+		mybox (BX+t*DD-RR-1, BY+RR, BX+t*DD-RR, BY+RR+(BS-1)*DD+1, LBOARDLINES, CBOARDLINES)
+		mybox (BX+RR, BY+t*DD-RR-1, BX+RR+(BS-1)*DD+1, BY+t*DD-RR, LBOARDLINES, CBOARDLINES)
 	Next
+
+	If showinf Then c = CINF Else c = CBOARD
+
+	mybox (BX, BY, BX+RR, BY+BS*DD, LINF, c)
+	mybox (BX+BS*DD-RR, BY, BX+BS*DD, BY+BS*DD, LINF, c)
+	mybox (BX, BY, BX+BS*DD, BY+RR, LINF, c)
+	mybox (BX, BY+BS*DD-RR, BX+BS*DD, BY+BS*DD, LINF, c)
 End Sub
 
 
@@ -377,9 +479,37 @@ Function setpossible (mx As Integer, my As Integer) As Integer
 End Function
 
 
-' draws a stone on screen or copies it into board array
+' draws a stone on screen
 '
-Sub drawstone (mx As Integer, my As Integer, cp As Integer, sn As Integer)
+Sub drawstone (mx As Integer, my As Integer, sn As Integer)
+	If showlib And showinf Then
+		mycolor (CLIB) : mycircle (BX+mx, BY+my, LLIB, 2*RR+1.5)
+		mycolor (CINF) : mycircle (BX+mx, BY+my, LINF, 2*RR+0.5)
+	ElseIf showlib Then
+		mycolor (CLIB) : mycircle (BX+mx, BY+my, LLIB, 2*RR+1.5)
+		mycolor (CBOARD) : mycircle (BX+mx, BY+my, LINF, 2*RR+0.5)
+	ElseIf showinf Then
+		mycolor (CINF) : mycircle (BX+mx, BY+my, LINF, 2*RR+0.5)
+	EndIf
+	mycolor (stonecolor(sn)) : mycircle (BX+mx, BY+my, LSTONE, RR)
+End Sub
+
+
+' draw all stones from the stone list
+'
+Sub drawstones ()
+	Dim As Integer t, x, y
+	For t = 0 To MAXSTONES-1
+		x = stones(t).x
+		y = stones(t).y
+		If x>0 Then drawstone (x, y, t)
+	Next
+End Sub
+
+
+' copies a stone into board array
+'
+Sub copystone (mx As Integer, my As Integer, sn As Integer)
 	Dim As Integer x, y, c
 	Dim As Integer px, py, d
 
@@ -394,15 +524,7 @@ Sub drawstone (mx As Integer, my As Integer, cp As Integer, sn As Integer)
 						d = ba(px,py)
 						If Not ((c=CLIB Or c=CINF) And Not (d=CBOARD Or d=CBOARDLINES Or d=CLIB)) Then
 							If c=CBLACK Then c = stonecolor (sn)
-							If cp=0 Then
-								If c=CINF And showinf=0 Or c=CLIB And showlib=0 Then
-									PSet(BX+px,BY+py),col(boardcolor(px,py))
-								Else
-									PSet(BX+px,BY+py),col(c)
-								EndIf
-							Else
-								ba(px,py) = c
-							EndIf
+							ba(px,py) = c
 						EndIf
 					EndIf
 				EndIf
@@ -412,7 +534,7 @@ Sub drawstone (mx As Integer, my As Integer, cp As Integer, sn As Integer)
 End Sub
 
 
-' init board and draw all stones anew from positions in stones array
+' init board and copy all stones anew from positions in stones array
 '
 Sub redrawboard ()
 	Dim As Integer x, y, t
@@ -421,7 +543,7 @@ Sub redrawboard ()
 	For t = 0 To MAXSTONES-1
 		x = stones(t).x
 		y = stones(t).y
-		If x>0 Then drawstone (x, y, 1, t)
+		If x>0 Then copystone (x, y, t)
 	Next
 End Sub
 
@@ -552,13 +674,13 @@ Sub drawconnections ()
 				w = Sqr(dx^2+dy^2)
 				dx /= w
 				dy /= w
-				Line(BX+x+dy*5,BY+y-dx*5)-(BX+x2+dy*5,BY+y2-dx*5),col(conl(t).c)
-				Line(BX+x-dy*5,BY+y+dx*5)-(BX+x2-dy*5,BY+y2+dx*5),col(conl(t).c)
+				myline (BX+x+dy*5, BY+y-dx*5, BX+x2+dy*5, BY+y2-dx*5, conl(t).c)
+				myline (BX+x-dy*5, BY+y+dx*5, BX+x2-dy*5, BY+y2+dx*5, conl(t).c)
 			Else
-				If showweak Then Line(BX+x,BY+y)-(BX+x2,BY+y2),col(conl(t).c)
+				If showweak Then myline (BX+x, BY+y, BX+x2, BY+y2, conl(t).c)
 			EndIf
 		ElseIf conl(t).s=1 Then
-			If showweak Then Line(BX+x,BY+y)-(BX+x2,BY+y2),col(conl(t).c)
+			If showweak Then myline (BX+x, BY+y, BX+x2, BY+y2, conl(t).c)
 		EndIf
 	Next
 End Sub
@@ -698,17 +820,16 @@ Sub drawlibs ()
 			Else
 				s = Str(Int(f))
 			EndIf
-			Color col(stonecolor(t+1))		' the other color
-			Draw String (BX+x-3,BY+y-3),s
+			mycolor (stonecolor(t+1))		' the other color
+			mytextout (BX+x-Len(s)*8/2+1, BY+y-5, LNUM, s)
 		EndIf
 	Next
 End Sub
 
 
-' kills a stone and its connections
+' kills a stone
 '
 Sub killstone (t As Integer)
-	Dim As Integer d
 	stones(t).x = 0
 	stones(t).y = 0
 End Sub
@@ -747,6 +868,15 @@ Sub searchnearest (ByRef mx As Integer, ByRef my As Integer)
 End Sub
 
 
+' return a nicely formatted floating point number string
+'
+Function myformat (n As Double) As String
+	Dim As String s
+	s = Str(Int(n))+"."+Str(Int(n*1000)-Int(n)*1000)
+	Return Space(7-Len(s))+s
+End Function
+
+
 ' calc players territorium
 '
 Sub calcarea ()
@@ -764,7 +894,7 @@ Sub calcarea ()
 			y = conl(t).y1
 			x2 = conl(t).x2
 			y2 = conl(t).y2
-			linedda (x, y, x2, y2, conl(t).c)
+			linedd (x, y, x2, y2, conl(t).c)
 		EndIf
 	Next
 
@@ -808,15 +938,15 @@ Sub calcarea ()
 		Next
 	Next
 
-	Line (2*8,2*8)-(20*8,7*8),col(CBOARD),bf
-	Locate 4,4 : Color col(CBLACK),col(CBOARD) : Print Using "b ###.###";sb/(DD^2)
-	Locate 6,4 : Color col(CWHITE),col(CBOARD) : Print Using "w ###.###";sw/(DD^2)
+	mybox (20, 36*16+4, 200, 39*16+4, 0.1, CBOARD)
+	mycolor (CBLACK) : mytextout (30, 38*16, 0.2, "b "+myformat(sb/(DD^2)))
+	mycolor (CWHITE) : mytextout (30, 37*16, 0.2, "w "+myformat(sw/(DD^2)))
 
 	For y = 0 To BAS-1			' draw area colors on board
 		For x = 0 To BAS-1
 			If (x+y) Mod 2=0 Then
 				t = bb(x,y)
-				If t<>CINF Then PSet(BX+x,BY+y),col(t)
+				If t<>CINF Then mybox (BX+x, BY+y, BX+x+1, BY+y+1, LAREA, t)
 			EndIf
 		Next
 	Next
@@ -827,7 +957,7 @@ End Sub
 '
 Sub loadstones ()
 	Dim As Integer t
-	Open "stones.txt" For Input As #1
+	Open SAVEFILE For Input As #1
 	Input #1,stonenr
 	For t = 0 To MAXSTONES-1
 		Input #1,stones(t).x,stones(t).y
@@ -840,7 +970,7 @@ End Sub
 '
 Sub savestones ()
 	Dim As Integer t
-	Open "stones.txt" For Output As #1
+	Open SAVEFILE For Output As #1
 	Print #1,stonenr
 	For t = 0 To MAXSTONES-1
 		Print #1,stones(t).x,stones(t).y
@@ -879,28 +1009,28 @@ Sub drawmenu ()
 	ts(0) = "off" : ts(1) = "on"
 	tc(0) = "none" : tc(1) = "longer" : tc(2) = "both"
 
-	Color col(CBOARD),col(CBACKGROUND)
+	mycolor (CBOARD)
 
-	Locate 16,3 : Print "f) show territory: ";ts(showarea)
+	mytextout (30, 35*16, 0, "f) show territory: "+ts(showarea))
 
-	Locate 20,3 : Print "1) show influence: ";ts(showinf)
-	Locate 22,3 : Print "2) show liberties: ";ts(showlib)
-	Locate 24,3 : Print "3) show numbers: ";ts(shownum)
-	Locate 26,3 : Print "4) show weak connections: ";ts(showweak)
-	Locate 28,3 : Print "5) show strong connections: ";ts(showstrong)
+	mytextout (30, 33*16, 0, "1) show influence: "+ts(showinf))
+	mytextout (30, 32*16, 0, "2) show liberties: "+ts(showlib))
+	mytextout (30, 31*16, 0, "3) show numbers: "+ts(shownum))
+	mytextout (30, 30*16, 0, "4) show weak connections: "+ts(showweak))
+	mytextout (30, 29*16, 0, "5) show strong connections: "+ts(showstrong))
 
-	Locate 32,3 : Print "8) connection cutting: ";tc(togglecut)
-	Locate 34,3 : Print "9) weak connection groups: ";ts(togglegrp)
-	Locate 36,3 : Print "0) weak connection area: ";ts(togglearea)
+	mytextout (30, 27*16, 0, "8) connection cutting: "+tc(togglecut))
+	mytextout (30, 26*16, 0, "9) weak connection groups: "+ts(togglegrp))
+	mytextout (30, 25*16, 0, "0) weak connection area: "+ts(togglearea))
 
-	Locate 40,3 : Print Using "last move: #### ####";lastmovex;lastmovey
+	mytextout (30, 23*16, 0, "last move: "+Str(lastmovex)+" "+Str(lastmovey))
 End Sub
 
 
 ' adds a stone to the board
 '
 Sub setstone (x As Integer, y As Integer)
-	drawstone (x, y, 1, stonenr)
+	copystone (x, y, stonenr)
 	stones(stonenr).x = x
 	stones(stonenr).y = y
 	stonenr += 1
@@ -1007,26 +1137,54 @@ End Function
 Sub startmenu ()
 	Dim As String i
 
-	Color col(CBOARD),col(CBACKGROUND)
-	Cls
-	Locate 10,40 : Print "RealGo"
-
-	Locate 20,30 : Print "1) start email game as black"
-	Locate 22,30 : Print "2) start email game as white"
-	Locate 26,30 : Print "3) start shared file game as black"
-	Locate 28,30 : Print "4) start shared file game as white"
-	Locate 32,30 : Print "5) start single computer game"
-
 	gametype = 0
 	Do
-		i=Input(1)
+		glClear (GL_COLOR_BUFFER_BIT Or GL_DEPTH_BUFFER_BIT)
+
+		mycolor (CBOARD)
+		mytextout (450, 30*16, 0, "RealGo")
+		mytextout (400, 24*16, 0, "1) start email game as black")
+		mytextout (400, 23*16, 0, "2) start email game as white")
+		mytextout (400, 21*16, 0, "3) start shared file game as black")
+		mytextout (400, 20*16, 0, "4) start shared file game as white")
+		mytextout (400, 18*16, 0, "5) start single computer game")
+
+		i = Inkey
 		If i="1" Then gametype = 1 : spieler = 1
 		If i="2" Then gametype = 1 : spieler = 2
 		If i="3" Then gametype = 2 : spieler = 1
 		If i="4" Then gametype = 2 : spieler = 2
 		If i="5" Then gametype = 3 : spieler = 0
+
+		Flip
 	Loop While gametype=0
 End Sub
+
+
+' input stuff on opengl screen
+'
+Function myinput (ByRef x As Integer, ByRef y As Integer) As Integer
+	Dim As String i, s
+	Dim As Integer t
+
+	glDisable (GL_DEPTH_TEST)
+	Do
+		mybox (30, 22*16+4, 200, 20*16+4, 0.1, CBOARD)
+		mycolor (stonecolor (stonenr))
+		mytextout (38, 21*16, 0.1, "input x,y: "+s)
+		i = Inkey
+		If i=Chr(13) Then Exit Do
+		If i=Chr(8) Then s = Left(s,Len(s)-1) : Continue Do
+		If Asc(i)>=32 And Asc(i)<128 Then s += i
+		Flip
+	Loop
+	glEnable (GL_DEPTH_TEST)
+	t = InStr(s,",")
+	If t=0 Then Return 0
+	x = Val(Mid(s,1,t))
+	y = Val(Mid(s,t+1,Len(s)))
+	Return 1
+End Function
 
 
 ' main
@@ -1035,8 +1193,33 @@ Sub main ()
 	Dim As Integer x,y,wheel,button,lbuttoncnt
 	Dim As Integer t, wantinput
 	Dim As String i
+	Dim As HWND hwnd
+	Dim As HDC hdc
+	Dim As HGLRC hglrc
+	Dim As HFONT hfont
 
-	ScreenRes 1100,650,32,2
+	ScreenRes SCRX,SCRY,32,,FB.GFX_OPENGL Or FB.GFX_MULTISAMPLE
+
+	ScreenControl (FB.GET_WINDOW_HANDLE, Cast (Integer, hwnd))
+	hdc = GetDC (hwnd)
+	hglrc = wglCreateContext (hdc)
+	wglMakeCurrent (hdc, hglrc)
+	hfont = CreateFont (16, 8, 0, 0, FW_DONTCARE, 0, 0, 0, DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, _
+	CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, @"Fixedsys")
+	SelectObject (hdc, hfont)
+	'SelectObject (hdc, GetStockObject (SYSTEM_FONT))
+	wglUseFontBitmaps (hdc, 0, 255, 1000)
+	DeleteObject (hfont)
+
+	glViewport (0, 0, SCRX, SCRY)
+	glMatrixMode (GL_PROJECTION)
+	glLoadIdentity ()
+	glOrtho (0, SCRX, 0, SCRY, -1, 1)
+	glMatrixMode (GL_MODELVIEW)
+	glLoadIdentity ()
+
+	glClearColor (0.5, 0, 0, 1)		' background color
+	glEnable (GL_DEPTH_TEST)
 
 	startmenu ()
 
@@ -1060,17 +1243,16 @@ Sub main ()
 
 	stonenr = 1
 
-	ScreenSet 1,0
-
 	Do
-		Color col(CWHITE),col(CBACKGROUND)
-		Cls
+		glClear (GL_COLOR_BUFFER_BIT Or GL_DEPTH_BUFFER_BIT)
+
 		drawmenu ()
 		drawboard ()
+		drawstones ()
 
 		GetMouse x,y,wheel,button
 		x -= BX
-		y -= BY
+		y = SCRY-y-BY
 		If button=0 Then lbuttoncnt = 0
 		If button=1 Then lbuttoncnt += 1
 
@@ -1087,7 +1269,7 @@ Sub main ()
 					EndIf
 				EndIf
 			Else
-				If wantinput=0 Then drawstone (x, y, 0, stonenr)		' draw hovering stone
+				If wantinput=0 Then drawstone (x, y, stonenr)		' draw hovering stone
 			EndIf
 		EndIf
 
@@ -1115,18 +1297,14 @@ Sub main ()
 
 
 		If wantinput Then		' manual input of coordinates of stone to set
-			Flip
-			ScreenSet
-			Color col(stonecolor(stonenr)),col(CBOARD)
-			Line(2*8,42*8)-(30*8,46*8),col(CBOARD),bf
-			Locate 44,4 : Input "input x,y: ",x,y
-			setstone (x, y)
+			If myinput (x, y)<>0 Then		' byref!
+				setstone (x, y)
+			EndIf
 			wantinput = 0
-			ScreenSet 1,0
 		EndIf
 
 
-		i = InKey
+		i = Inkey
 		If i=Chr(27) Then Exit Do
 
 		If i="s" Then savestones ()
