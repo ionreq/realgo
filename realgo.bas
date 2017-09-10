@@ -29,6 +29,7 @@
 		spielen per shared file folder (auch windows)
 		opengl als anzeige
 		opengl: rand von board mit z=1 background color quads abschneiden
+		opengl: pan möglich
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -42,12 +43,12 @@
 		cut mit d1=d2 könnte auch bleiben. evtl schalter dafür
 		fullscreen/fenster auswahl
 		config file mit schaltern, email namen, save file name, fullscreen/window, etc.
+		opengl: freiheiten als gaussbuckel darstellen, evtl mit variabler breite
+			das wäre auch die lösung für transparentes inf
 
 	todo
 		brettgröße auswahl
-		opengl: zoom/pan möglich
-		opengl: freiheiten als gaussbuckel darstellen, evtl mit variabler breite
-			das wäre auch die lösung für transparentes inf
+		opengl: zoom
 
 '/
 
@@ -62,13 +63,10 @@
 
 Const PI = 6.283185307
 
-Const SCRX = 1100		' screen size
-Const SCRY = 650
+Const SCRX = 72*16		' screen size
+Const SCRY = 72*9
 
 Const BS = 13			' board size
-
-Const BX = 400			' board offset on screen
-Const BY = 20
 
 Const MAXSTONES = BS^2		' maxiumum number of stones
 
@@ -140,7 +138,7 @@ Dim Shared As Integer togglecut, togglegrp, togglearea		' toggle switches for va
 
 Dim Shared As Integer lastmovex, lastmovey	' coos of last stone set
 
-Dim Shared As Integer spieler, gametype
+Dim Shared As Integer spieler, gametype		' for email/shared folder game
 
 Const SENDSERVER1 = "smtp.web.de"
 Const SENDUSER1 = "realgoplayer@web.de"
@@ -153,10 +151,10 @@ Const GETMAILDIR1 = "/home/yourname/Maildirweb/new"
 Const GETMAILRC2 = "getmailrcgmx"
 Const GETMAILDIR2 = "/home/yourname/Maildirgmx/new"
 
-Const SHAREDFILE1 = "sharedfile1.txt"
+Const SHAREDFILE1 = "sharedfile1.txt"		' files in shared folder
 Const SHAREDFILE2 = "sharedfile2.txt"
 
-Const SAVEFILE = "stones.txt"
+Const SAVEFILE = "stones.txt"		' save file name of a game
 
 Const LBOARD = 0				' opengl depth layers
 Const LBOARDLINES = 0.1
@@ -165,6 +163,12 @@ Const LINF = 0.3
 Const LSTONE = 0.4
 Const LAREA = 0.5
 Const LNUM = 0.6
+
+Dim Shared As Integer panx = -20, pany = -20			' board panning
+
+Const VSCREEN = 0		' viewports
+Const VMENU = 1
+Const VBOARD = 2
 
 
 Declare Sub main
@@ -240,6 +244,22 @@ Sub mybox (x1 As Double, y1 As Double, x2 As Double, y2 As Double, z As Double, 
 	glVertex3d (x2, y2, z)
 	glVertex3d (x1, y2, z)
 	glEnd ()
+End Sub
+
+
+' choose opengl viewport
+'
+Sub viewport (v As Integer)
+	If v=VSCREEN Then
+		glViewport (0, 0, SCRX, SCRY) : glMatrixMode (GL_PROJECTION) : glLoadIdentity ()
+		glOrtho (0, SCRX, 0, SCRY, -1, 1) : glMatrixMode (GL_MODELVIEW) : glLoadIdentity ()
+	ElseIf v=VMENU Then
+		glViewport (0, 0, SCRX-SCRY, SCRY) : glMatrixMode (GL_PROJECTION) : glLoadIdentity ()
+		glOrtho (0, SCRX-SCRY, 0, SCRY, -1, 1) : glMatrixMode (GL_MODELVIEW) : glLoadIdentity ()
+	ElseIf v=VBOARD Then
+		glViewport (SCRX-SCRY, 0, SCRY, SCRY) : glMatrixMode (GL_PROJECTION) : glLoadIdentity ()
+		glOrtho (panx, panx+SCRY, pany, pany+SCRY, -1, 1) : glMatrixMode (GL_MODELVIEW) : glLoadIdentity ()
+	EndIf
 End Sub
 
 
@@ -344,24 +364,24 @@ End Sub
 Sub drawboard ()
 	Dim As Integer t, c
 
-	mybox (BX, BY, BX+BS*DD, BY+BS*DD, LBOARD, CBOARD)
+	mybox (0, 0, BS*DD, BS*DD, LBOARD, CBOARD)
 
-	mybox (BX-DD, BY-DD, BX, BY+BS*DD+DD, 1, CBACKGROUND)
-	mybox (BX+BS*DD, BY-DD, BX+BS*DD+DD, BY+BS*DD+DD, 1, CBACKGROUND)
-	mybox (BX, BY-DD, BX+BS*DD, BY, 1, CBACKGROUND)
-	mybox (BX, BY+BS*DD, BX+BS*DD, BY+BS*DD+DD, 1, CBACKGROUND)
+	mybox (-DD, -DD, 0, BS*DD+DD, 1, CBACKGROUND)
+	mybox (BS*DD, -DD, BS*DD+DD, BS*DD+DD, 1, CBACKGROUND)
+	mybox (0, -DD, BS*DD, 0, 1, CBACKGROUND)
+	mybox (0, BS*DD, BS*DD, BS*DD+DD, 1, CBACKGROUND)
 
 	For t = 1 To BS
-		mybox (BX+t*DD-RR-1, BY+RR, BX+t*DD-RR, BY+RR+(BS-1)*DD+1, LBOARDLINES, CBOARDLINES)
-		mybox (BX+RR, BY+t*DD-RR-1, BX+RR+(BS-1)*DD+1, BY+t*DD-RR, LBOARDLINES, CBOARDLINES)
+		mybox (t*DD-RR-1, RR, t*DD-RR, RR+(BS-1)*DD+1, LBOARDLINES, CBOARDLINES)
+		mybox (RR, t*DD-RR-1, RR+(BS-1)*DD+1, t*DD-RR, LBOARDLINES, CBOARDLINES)
 	Next
 
 	If showinf Then c = CINF Else c = CBOARD
 
-	mybox (BX, BY, BX+RR, BY+BS*DD, LINF, c)
-	mybox (BX+BS*DD-RR, BY, BX+BS*DD, BY+BS*DD, LINF, c)
-	mybox (BX, BY, BX+BS*DD, BY+RR, LINF, c)
-	mybox (BX, BY+BS*DD-RR, BX+BS*DD, BY+BS*DD, LINF, c)
+	mybox (0, 0, RR, BS*DD, LINF, c)
+	mybox (BS*DD-RR, 0, BS*DD, BS*DD, LINF, c)
+	mybox (0, 0, BS*DD, RR, LINF, c)
+	mybox (0, BS*DD-RR, BS*DD, BS*DD, LINF, c)
 End Sub
 
 
@@ -483,15 +503,15 @@ End Function
 '
 Sub drawstone (mx As Integer, my As Integer, sn As Integer)
 	If showlib And showinf Then
-		mycolor (CLIB) : mycircle (BX+mx, BY+my, LLIB, 2*RR+1.5)
-		mycolor (CINF) : mycircle (BX+mx, BY+my, LINF, 2*RR+0.5)
+		mycolor (CLIB) : mycircle (mx, my, LLIB, 2*RR+1.5)
+		mycolor (CINF) : mycircle (mx, my, LINF, 2*RR+0.5)
 	ElseIf showlib Then
-		mycolor (CLIB) : mycircle (BX+mx, BY+my, LLIB, 2*RR+1.5)
-		mycolor (CBOARD) : mycircle (BX+mx, BY+my, LINF, 2*RR+0.5)
+		mycolor (CLIB) : mycircle (mx, my, LLIB, 2*RR+1.5)
+		mycolor (CBOARD) : mycircle (mx, my, LINF, 2*RR+0.5)
 	ElseIf showinf Then
-		mycolor (CINF) : mycircle (BX+mx, BY+my, LINF, 2*RR+0.5)
+		mycolor (CINF) : mycircle (mx, my, LINF, 2*RR+0.5)
 	EndIf
-	mycolor (stonecolor(sn)) : mycircle (BX+mx, BY+my, LSTONE, RR)
+	mycolor (stonecolor(sn)) : mycircle (mx, my, LSTONE, RR)
 End Sub
 
 
@@ -674,13 +694,13 @@ Sub drawconnections ()
 				w = Sqr(dx^2+dy^2)
 				dx /= w
 				dy /= w
-				myline (BX+x+dy*5, BY+y-dx*5, BX+x2+dy*5, BY+y2-dx*5, conl(t).c)
-				myline (BX+x-dy*5, BY+y+dx*5, BX+x2-dy*5, BY+y2+dx*5, conl(t).c)
+				myline (x+dy*5, y-dx*5, x2+dy*5, y2-dx*5, conl(t).c)
+				myline (x-dy*5, y+dx*5, x2-dy*5, y2+dx*5, conl(t).c)
 			Else
-				If showweak Then myline (BX+x, BY+y, BX+x2, BY+y2, conl(t).c)
+				If showweak Then myline (x, y, x2, y2, conl(t).c)
 			EndIf
 		ElseIf conl(t).s=1 Then
-			If showweak Then myline (BX+x, BY+y, BX+x2, BY+y2, conl(t).c)
+			If showweak Then myline (x, y, x2, y2, conl(t).c)
 		EndIf
 	Next
 End Sub
@@ -821,7 +841,7 @@ Sub drawlibs ()
 				s = Str(Int(f))
 			EndIf
 			mycolor (stonecolor(t+1))		' the other color
-			mytextout (BX+x-Len(s)*8/2+1, BY+y-5, LNUM, s)
+			mytextout (x-Len(s)*8/2+1, y-5, LNUM, s)
 		EndIf
 	Next
 End Sub
@@ -871,9 +891,12 @@ End Sub
 ' return a nicely formatted floating point number string
 '
 Function myformat (n As Double) As String
-	Dim As String s
-	s = Str(Int(n))+"."+Str(Int(n*1000)-Int(n)*1000)
-	Return Space(7-Len(s))+s
+	Dim As String s, t
+	s = Str(Int(n))
+	s = Space(3-Len(s))+s
+	t = Str(Int(n*1000)-Int(n)*1000)
+	t = String(3-Len(t),"0")+t
+	Return s+"."+t
 End Function
 
 
@@ -938,15 +961,17 @@ Sub calcarea ()
 		Next
 	Next
 
+	viewport (VMENU)
 	mybox (20, 36*16+4, 200, 39*16+4, 0.1, CBOARD)
 	mycolor (CBLACK) : mytextout (30, 38*16, 0.2, "b "+myformat(sb/(DD^2)))
 	mycolor (CWHITE) : mytextout (30, 37*16, 0.2, "w "+myformat(sw/(DD^2)))
 
+	viewport (VBOARD)
 	For y = 0 To BAS-1			' draw area colors on board
 		For x = 0 To BAS-1
 			If (x+y) Mod 2=0 Then
 				t = bb(x,y)
-				If t<>CINF Then mybox (BX+x, BY+y, BX+x+1, BY+y+1, LAREA, t)
+				If t<>CINF Then mybox (x, y, x+1, y+1, LAREA, t)
 			EndIf
 		Next
 	Next
@@ -1167,6 +1192,7 @@ Function myinput (ByRef x As Integer, ByRef y As Integer) As Integer
 	Dim As String i, s
 	Dim As Integer t
 
+	viewport (VMENU)
 	glDisable (GL_DEPTH_TEST)
 	Do
 		mybox (30, 22*16+4, 200, 20*16+4, 0.1, CBOARD)
@@ -1190,8 +1216,8 @@ End Function
 ' main
 '
 Sub main ()
-	Dim As Integer x,y,wheel,button,lbuttoncnt
-	Dim As Integer t, wantinput
+	Dim As Integer mx,my,wheel,button, lbuttoncnt, rbuttoncnt
+	Dim As Integer x, y, t, wantinput, oldmx, oldmy
 	Dim As String i
 	Dim As HWND hwnd
 	Dim As HDC hdc
@@ -1211,16 +1237,10 @@ Sub main ()
 	wglUseFontBitmaps (hdc, 0, 255, 1000)
 	DeleteObject (hfont)
 
-	glViewport (0, 0, SCRX, SCRY)
-	glMatrixMode (GL_PROJECTION)
-	glLoadIdentity ()
-	glOrtho (0, SCRX, 0, SCRY, -1, 1)
-	glMatrixMode (GL_MODELVIEW)
-	glLoadIdentity ()
-
 	glClearColor (0.5, 0, 0, 1)		' background color
 	glEnable (GL_DEPTH_TEST)
 
+	viewport (VSCREEN)
 	startmenu ()
 
 	If gametype=1 Then
@@ -1246,15 +1266,27 @@ Sub main ()
 	Do
 		glClear (GL_COLOR_BUFFER_BIT Or GL_DEPTH_BUFFER_BIT)
 
+		viewport (VMENU)
 		drawmenu ()
+
+		viewport (VBOARD)
 		drawboard ()
 		drawstones ()
 
-		GetMouse x,y,wheel,button
-		x -= BX
-		y = SCRY-y-BY
-		If button=0 Then lbuttoncnt = 0
+		oldmx = mx : oldmy = my
+		GetMouse mx,my,wheel,button
+		mx = mx-(SCRX-SCRY)
+		my = (SCRY-1)-my
+		If button=0 Then lbuttoncnt = 0 : rbuttoncnt = 0
 		If button=1 Then lbuttoncnt += 1
+		If button=2 Then rbuttoncnt += 1
+
+		If rbuttoncnt>0 Then
+			panx += oldmx-mx
+			pany += oldmy-my
+		EndIf
+		x = mx+panx
+		y = my+pany
 
 		searchnearest (x, y)		' byref!
 
