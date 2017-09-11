@@ -1236,8 +1236,8 @@ Function myinput (ByRef x As Integer, ByRef y As Integer) As Integer
 	glEnable (GL_DEPTH_TEST)
 	t = InStr(s,",")
 	If t=0 Then Return 0
-	x = Val(Mid(s,1,t))
-	y = Val(Mid(s,t+1,Len(s)))
+	x = Val(Mid(s,1,t-1))
+	y = Val(Mid(s,t+1,Len(s)-t))
 	Return 1
 End Function
 
