@@ -119,5 +119,9 @@ All you need is a shared directory somewhere.
 That can be in your local network at home with a PC and a laptop, say, or over the internet with a dropbox style service.
 Just put the realgo.exe in there and start it from there on both computers.
 
+The third method doesn't even need the internet.
+Just tell your partner the coordinates of your move over the phone (or send an email or tweet).
+He can put them in by pressing "i".
+
 Now you only need a way to agree who's black and who's white. Have fun!
 
