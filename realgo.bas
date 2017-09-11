@@ -30,6 +30,8 @@
 		opengl als anzeige
 		opengl: rand von board mit z=1 background color quads abschneiden
 		opengl: pan möglich
+		opengl: zoom
+		brettgröße auswahl
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -47,8 +49,6 @@
 			das wäre auch die lösung für transparentes inf
 
 	todo
-		brettgröße auswahl
-		opengl: zoom
 
 '/
 
@@ -66,16 +66,18 @@ Const PI = 6.283185307
 Const SCRX = 72*16		' screen size
 Const SCRY = 72*9
 
-Const BS = 13			' board size
+Const LL = 300		' width of menu viewport, board is SCRX-LL
 
-Const MAXSTONES = BS^2		' maxiumum number of stones
+Dim Shared As Integer BS			' board size
 
-Const MAXCONS = MAXSTONES*3		' maximum number of connections
+Dim Shared As Integer MAXSTONES	' maxiumum number of stones
+
+Dim Shared As Integer MAXCONS		' maximum number of connections
 
 Const RR = 23			' radius stone
 Const DD = 2*RR+1		' diameter stone
 
-Const BAS = BS*DD		' board array size
+Dim Shared As Integer BAS			' board array size
 Const SAS = 1+RR+RR+1+RR+RR+1		' stone array size
 
 'color numbers
@@ -164,7 +166,8 @@ Const LSTONE = 0.4
 Const LAREA = 0.5
 Const LNUM = 0.6
 
-Dim Shared As Integer panx = -20, pany = -20			' board panning
+Dim Shared As Double panx = -20, pany = -20			' board panning
+Dim Shared As Double zoom = 1			' and zooming
 
 Const VSCREEN = 0		' viewports
 Const VMENU = 1
@@ -197,7 +200,9 @@ End Sub
 Sub mycircle (x As Double, y As Double, z As Double, r As Double)
 	Dim As Integer n, t
 
-	n = 32
+	n = 32/zoom
+	If n<16 Then n = 16
+	If n>256 Then n = 256
 
 	glBegin (GL_TRIANGLE_FAN)
 	For t = 0 To n-1
@@ -254,11 +259,11 @@ Sub viewport (v As Integer)
 		glViewport (0, 0, SCRX, SCRY) : glMatrixMode (GL_PROJECTION) : glLoadIdentity ()
 		glOrtho (0, SCRX, 0, SCRY, -1, 1) : glMatrixMode (GL_MODELVIEW) : glLoadIdentity ()
 	ElseIf v=VMENU Then
-		glViewport (0, 0, SCRX-SCRY, SCRY) : glMatrixMode (GL_PROJECTION) : glLoadIdentity ()
-		glOrtho (0, SCRX-SCRY, 0, SCRY, -1, 1) : glMatrixMode (GL_MODELVIEW) : glLoadIdentity ()
+		glViewport (0, 0, LL, SCRY) : glMatrixMode (GL_PROJECTION) : glLoadIdentity ()
+		glOrtho (0, LL, 0, SCRY, -1, 1) : glMatrixMode (GL_MODELVIEW) : glLoadIdentity ()
 	ElseIf v=VBOARD Then
-		glViewport (SCRX-SCRY, 0, SCRY, SCRY) : glMatrixMode (GL_PROJECTION) : glLoadIdentity ()
-		glOrtho (panx, panx+SCRY, pany, pany+SCRY, -1, 1) : glMatrixMode (GL_MODELVIEW) : glLoadIdentity ()
+		glViewport (LL, 0, SCRX-LL, SCRY) : glMatrixMode (GL_PROJECTION) : glLoadIdentity ()
+		glOrtho ((SCRX-LL)/2+panx-(SCRX-LL)/2*zoom, (SCRX-LL)/2+panx+(SCRX-LL)/2*zoom, SCRY/2+pany-SCRY/2*zoom, SCRY/2+pany+SCRY/2*zoom, -1, 1) : glMatrixMode (GL_MODELVIEW) : glLoadIdentity ()
 	EndIf
 End Sub
 
@@ -841,7 +846,7 @@ Sub drawlibs ()
 				s = Str(Int(f))
 			EndIf
 			mycolor (stonecolor(t+1))		' the other color
-			mytextout (x-Len(s)*8/2+1, y-5, LNUM, s)
+			mytextout (x-(Len(s)*8/2+1)*zoom, y-5*zoom, LNUM, s)
 		EndIf
 	Next
 End Sub
@@ -1183,6 +1188,30 @@ Sub startmenu ()
 
 		Flip
 	Loop While gametype=0
+
+	BS = 0
+	Do
+		glClear (GL_COLOR_BUFFER_BIT Or GL_DEPTH_BUFFER_BIT)
+
+		mycolor (CBOARD)
+		mytextout (450, 30*16, 0, "RealGo")
+		mytextout (430, 24*16, 0, "0) 9x9 board")
+		mytextout (430, 22*16, 0, "1) 11x11 board")
+		mytextout (430, 20*16, 0, "3) 13x13 board")
+		mytextout (430, 18*16, 0, "5) 15x15 board")
+		mytextout (430, 16*16, 0, "7) 17x17 board")
+		mytextout (430, 14*16, 0, "9) 19x19 board")
+
+		i = Inkey
+		If i="0" Then BS = 9
+		If i="1" Then BS = 11
+		If i="3" Then BS = 13
+		If i="5" Then BS = 15
+		If i="7" Then BS = 17
+		If i="9" Then BS = 19
+
+		Flip
+	Loop While BS=0
 End Sub
 
 
@@ -1217,7 +1246,7 @@ End Function
 '
 Sub main ()
 	Dim As Integer mx,my,wheel,button, lbuttoncnt, rbuttoncnt
-	Dim As Integer x, y, t, wantinput, oldmx, oldmy
+	Dim As Integer x, y, t, wantinput, oldmx, oldmy, owheel
 	Dim As String i
 	Dim As HWND hwnd
 	Dim As HDC hdc
@@ -1227,6 +1256,7 @@ Sub main ()
 	ScreenRes SCRX,SCRY,32,,FB.GFX_OPENGL Or FB.GFX_MULTISAMPLE
 
 	ScreenControl (FB.GET_WINDOW_HANDLE, Cast (Integer, hwnd))
+	'MoveWindow (hwnd, 0, 0, SCRX, SCRY, 1)
 	hdc = GetDC (hwnd)
 	hglrc = wglCreateContext (hdc)
 	wglMakeCurrent (hdc, hglrc)
@@ -1243,12 +1273,21 @@ Sub main ()
 	viewport (VSCREEN)
 	startmenu ()
 
+	MAXSTONES = BS^2
+	ReDim stones(MAXSTONES)
+
+	MAXCONS = MAXSTONES*3
+	ReDim conl(MAXCONS)
+
+	BAS = BS*DD
+	ReDim ba(BAS,BAS), bb(BAS,BAS)
+
 	If gametype=1 Then
 		If spieler=1 Then ChDir (GETMAILDIR2)
 		If spieler=2 Then ChDir (GETMAILDIR1)
 	EndIf
 
-	showinf = 1
+	showinf = 0
 	showlib = 1
 	showweak = 1
 	showstrong = 1
@@ -1273,20 +1312,22 @@ Sub main ()
 		drawboard ()
 		drawstones ()
 
-		oldmx = mx : oldmy = my
+		oldmx = mx : oldmy = my : owheel = wheel
 		GetMouse mx,my,wheel,button
-		mx = mx-(SCRX-SCRY)
+		mx = mx-LL
 		my = (SCRY-1)-my
 		If button=0 Then lbuttoncnt = 0 : rbuttoncnt = 0
 		If button=1 Then lbuttoncnt += 1
 		If button=2 Then rbuttoncnt += 1
+		If wheel>owheel Then zoom *= 1.1
+		If wheel<owheel Then zoom /= 1.1
 
 		If rbuttoncnt>0 Then
-			panx += oldmx-mx
-			pany += oldmy-my
+			panx += (oldmx-mx)*zoom
+			pany += (oldmy-my)*zoom
 		EndIf
-		x = mx+panx
-		y = my+pany
+		x = (mx-(SCRX-LL)/2)*zoom + (SCRX-LL)/2 + panx
+		y = (my-SCRY/2)*zoom + SCRY/2 + pany
 
 		searchnearest (x, y)		' byref!
 
