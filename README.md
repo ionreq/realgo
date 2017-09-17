@@ -95,8 +95,8 @@ The guy who wants to place stones to your left and then to your right is out of 
 Ladders are an artifact of the grid.
 
 What about eyes? A group that has two eyes lives, one eye dies.
-Same in RealGo. The other eye is where your group still has liberties (even if it's only a 0d mathematical point), when all other liberties are occupied.
-And suicide is not allowed (or counts as a pass).
+Same in RealGo. The other eye is where your group still has liberties (even if it's only a 0d mathematical point), when all other liberties are occupied. The eyes have to be at least a stone diameter apart however. Otherwise you could cover them both by setting in one of them and then your influence could cover the other one as well.
+Suicide is not allowed (or counts as a pass).
 A ko means that you can't replace a killed stone in the following move, you have to play elsewhere.
 Well this should translate to: you can't play in the vicinity of one stone radius in the next move.
 False eyes, bamboo joints, race to kill, etc. there's still much to explore.
