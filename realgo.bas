@@ -1,5 +1,20 @@
 /' endlich ein gescheites go
 
+	keys
+		ESC	quit
+		LMB	place stone
+		RMB	pan
+		wheel	zoom
+		t		show pixels
+		i		input coordinates to place stone
+		f		show territory
+		s		save game to file
+		l		load game from file
+		k		kill stone near mouse
+		m		increase move (change color, pass)
+		1-5	show influence, liberties, numbers, weak, strong connections
+		8-0	connection cutting, groups and territory switches
+
 
 	gemacht
 		freiheiten eines steins berechnen und bei anzeige dadurch teilen*4
@@ -32,6 +47,12 @@
 		opengl: pan möglich
 		opengl: zoom
 		brettgröße auswahl
+		linien in verschiedener dicke, nicht doppelt (probiert, erkennt man schlecht)
+		linien auch bei +0.5 wie kreismittelpunkte
+		kreisradius noch +0.5 (in zoom sieht mans)
+		pixel board als textur anzeigbar
+		vier distanzen d4 (weak <2*DD), d3 (<sqr(3)*DD), d2 (strong <sqr(2)*DD), d1 (touching DD)
+		für alle vier distanzen einen kreis malen wie für freiheiten makestone(), nichts berechnen
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -43,12 +64,16 @@
 			dazu muss im savefile gespeichert werden wo das war
 		steine ausblenden (für area besser sichtbar)
 		cut mit d1=d2 könnte auch bleiben. evtl schalter dafür
-		fullscreen/fenster auswahl
 		config file mit schaltern, email namen, save file name, fullscreen/window, etc.
 		opengl: freiheiten als gaussbuckel darstellen, evtl mit variabler breite
 			das wäre auch die lösung für transparentes inf
+		kreise die mit umfang überlappen
+		schalter für no grouping (bei keiner distanz)
 
 	todo
+		touching distance und d3 (sqr(3)*DD) schalter für grouping, territory
+		mögliche connections in echtzeit anzeigen
+		fullscreen/fenster auswahl
 
 '/
 
@@ -75,31 +100,50 @@ Dim Shared As Integer MAXSTONES	' maxiumum number of stones
 Dim Shared As Integer MAXCONS		' maximum number of connections
 
 Const RR = 23			' radius stone
-Const DD = 2*RR+1		' diameter stone
+Const DD = 2*RR		' diameter stone
 
-Dim Shared As Integer BAS			' board array size
-Const SAS = 1+RR+RR+1+RR+RR+1		' stone array size
+Dim Shared As Integer BAS		' board array size
+Const SAS = 2*(2*DD+3)+1		' stone array size
+Const MAXCNT = RR*13				' maximum expected number of liberties for that radius (about 2*RR*PI)
+
+Dim Shared As UByte ar(SAS,SAS), sa(2*RR+1,2*RR+1)		' stone array
 
 'color numbers
 Enum colors
-CBOARD		' board beige
-CBLACK		' black stone
-CWHITE		' white stone
-CINF			' influence area (grey)
-CLIB			' liberties circle (red)
+CBOARD			' board beige
 CBOARDLINES		' darker beige for grid lines on board
+CBLACK			' black stone
+CWHITE			' white stone
 CBACKGROUND		' the background
+CSTONE			' stone
+CCIRC				' circumference
+CINF				' influence area (grey) (<d1)
+CLIB				' liberties circle (red) (=d1)
+CLD2				' <d2
+CED2				' =d2
+CLD3				' <d3
+CED3				' =d3
+CLD4				' <d4
+CED4				' =d4
 NCOLORS
 End Enum
 
 Dim Shared As Integer col(NCOLORS) = { _
 RGB(230,188,104), _
+RGB(210,168,84), _
 RGB(0,0,0), _
 RGB(255,255,255), _
+RGB(128,0,0), _
+RGB(0,0,0), _
+RGB(100,100,100), _
 RGB(128,128,128), _
 RGB(200,0,0), _
-RGB(210,168,84), _
-RGB(128,0,0) _
+RGB(0,0,0), _
+RGB(0,0,0), _
+RGB(0,0,0), _
+RGB(0,0,0), _
+RGB(0,0,0), _
+RGB(0,0,0) _
 }
 
 Type stone
@@ -114,7 +158,6 @@ Dim Shared As Integer maxlib		' number of liberties of a stone
 
 Dim Shared As UByte ba(BAS,BAS)		' board array
 Dim Shared As UByte bb(BAS,BAS)		' board array for area calc
-Dim Shared As UByte sa(SAS,SAS)		' stone array
 
 Type connection
 	As Integer c		' color 1=black 2=white
@@ -166,8 +209,7 @@ Const LSTONE = 0.4
 Const LAREA = 0.5
 Const LNUM = 0.6
 
-Dim Shared As Double panx = -20, pany = -20			' board panning
-Dim Shared As Double zoom = 1			' and zooming
+Dim Shared As Double panx = -20, pany = -20, zoom = 1			' board panning and zooming
 
 Const VSCREEN = 0		' viewports
 Const VMENU = 1
@@ -214,7 +256,7 @@ End Sub
 
 ' draw a thick line as quad
 '
-Sub myline (x1 As Double, y1 As Double, x2 As Double, y2 As Double, c As Integer)
+Sub myline (x1 As Double, y1 As Double, x2 As Double, y2 As Double, LW As Double, c As Integer)
 	Dim As Double dx, dy, d, ex, ey, fx, fy
 
 	mycolor (c)
@@ -229,7 +271,8 @@ Sub myline (x1 As Double, y1 As Double, x2 As Double, y2 As Double, c As Integer
 	EndIf
 	ex = dx : ey = dy
 	fx = -dy : fy = dx
-	Const LW = 1.2
+	x1 += 0.5 : y1 += 0.5
+	x2 += 0.5 : y2 += 0.5
 	glBegin (GL_QUADS)
 	glVertex3d (x1-LW*ex-LW*fx, y1-LW*ey-LW*fy, LSTONE)
 	glVertex3d (x2+LW*ex-LW*fx, y2+LW*ey-LW*fy, LSTONE)
@@ -343,7 +386,7 @@ End Function
 '
 Function boardcolor (x As Integer, y As Integer) As Integer
 	If x<RR Or x>BAS-RR-1 Or y<RR Or y>BAS-RR-1 Then Return CBOARD
-	If (x+RR+1) Mod DD=0 Or (y+RR+1) Mod DD=0 Then Return CBOARDLINES
+	If (x+RR) Mod DD=0 Or (y+RR) Mod DD=0 Then Return CBOARDLINES
 	Return CBOARD
 End Function
 
@@ -369,124 +412,220 @@ End Sub
 Sub drawboard ()
 	Dim As Integer t, c
 
-	mybox (0, 0, BS*DD, BS*DD, LBOARD, CBOARD)
+	mybox (0, 0, BAS, BAS, LBOARD, CBOARD)
 
-	mybox (-DD, -DD, 0, BS*DD+DD, 1, CBACKGROUND)
-	mybox (BS*DD, -DD, BS*DD+DD, BS*DD+DD, 1, CBACKGROUND)
-	mybox (0, -DD, BS*DD, 0, 1, CBACKGROUND)
-	mybox (0, BS*DD, BS*DD, BS*DD+DD, 1, CBACKGROUND)
+	mybox (-DD, -DD, 0, BAS+DD, 1, CBACKGROUND)
+	mybox (BAS, -DD, BAS+DD, BAS+DD, 1, CBACKGROUND)
+	mybox (0, -DD, BAS, 0, 1, CBACKGROUND)
+	mybox (0, BAS, BAS, BAS+DD, 1, CBACKGROUND)
 
 	For t = 1 To BS
-		mybox (t*DD-RR-1, RR, t*DD-RR, RR+(BS-1)*DD+1, LBOARDLINES, CBOARDLINES)
-		mybox (RR, t*DD-RR-1, RR+(BS-1)*DD+1, t*DD-RR, LBOARDLINES, CBOARDLINES)
+		mybox (t*DD-RR, RR, t*DD-RR+1, RR+(BS-1)*DD+1, LBOARDLINES, CBOARDLINES)
+		mybox (RR, t*DD-RR, RR+(BS-1)*DD+1, t*DD-RR+1, LBOARDLINES, CBOARDLINES)
 	Next
 
 	If showinf Then c = CINF Else c = CBOARD
 
-	mybox (0, 0, RR, BS*DD, LINF, c)
-	mybox (BS*DD-RR, 0, BS*DD, BS*DD, LINF, c)
-	mybox (0, 0, BS*DD, RR, LINF, c)
-	mybox (0, BS*DD-RR, BS*DD, BS*DD, LINF, c)
+	mybox (0, 0, RR, BAS, LINF, c)
+	mybox (BAS-RR, 0, BAS, BAS, LINF, c)
+	mybox (0, 0, BAS, RR, LINF, c)
+	mybox (0, BAS-RR, BAS, BAS, LINF, c)
 End Sub
 
 
-' set pixel in stone array
+' distance squared
 '
-Function drawpixel (x As Integer, y As Integer, c As Integer) As Integer
-	Dim As Integer t
-
-	t = 0
-	If x>=0 And x<SAS And y>=0 And y<SAS Then
-		If c=CWHITE Then
-			If sa(x,y)=CBLACK Then t = 1
-		ElseIf sa(x,y)=0 Then
-			sa(x,y) = c
-		EndIf
-	EndIf
-	Return t
+Function dist (x1 As Integer, y1 As Integer, x2 As Integer, y2 As Integer) As Integer
+	Return (x2-x1)^2+(y2-y1)^2
 End Function
 
 
-' unfilled circle
+' are two circles touching or overlapping
 '
-Function drawcircle (mx As Integer, my As Integer, r As Integer, c As Integer) As Integer
-	Dim As Integer x, y, t
+Function testcircle (mx As Integer, my As Integer, mx2 As Integer, my2 As Integer) As Integer
+	Dim As Integer x, y, dx, dy, t, nx, ny
 
+	dx = mx2-mx
+	dy = my2-my
+	If Sqr(dx^2+dy^2)<2*RR-2 Then Return 3
+	If Sqr(dx^2+dy^2)>2*RR+2 Then Return 0
 	t = 0
-	For x = -r To r
-		y = Int(Sqr(r^2-x^2)+.5)
-		t += drawpixel (mx+x, my+y, c)
-		t += drawpixel (mx+x, my-y, c)
-	Next
-	For y = -r To r
-		x = Int(Sqr(r^2-y^2)+.5)
-		t += drawpixel (mx+x, my+y, c)
-		t += drawpixel (mx-x, my+y, c)
-	Next
-	Return t
-End Function
-
-
-' filled circle
-'
-Function fillcircle (mx As Integer, my As Integer, r As Integer, c As Integer) As Integer
-	Dim As Integer x, y, t, nx, ny
-
-	t = 0
-	For x = -r To r
-		ny = Int(Sqr(r^2-x^2)+.5)
-		For y = 0 To ny
-			drawpixel (mx+x, my+y, c)
-			drawpixel (mx+x, my-y, c)
-		Next
-	Next
-	For y = -r To r
-		nx = Int(Sqr(r^2-y^2)+.5)
-		For x = 0 To nx
-			drawpixel (mx+x, my+y, c)
-			drawpixel (mx-x, my+y, c)
+	For y = -RR To RR
+		For x = -RR To RR
+			nx = RR+dx+x
+			ny = RR+dy+y
+			If nx>=0 And nx<2*RR+1 And ny>=0 And ny<2*RR+1 Then
+				If sa(RR+x,RR+y)=CSTONE And sa(nx,ny)=CCIRC Then t Or= 2
+				If sa(RR+x,RR+y)=CCIRC And sa(nx,ny)=CCIRC Then t Or= 1
+			EndIf
 		Next
 	Next
 	Return t
 End Function
 
 
-' calc the stone array with stone, influence and libs
+' make stone array with tests for all the distances
 '
 Sub makestone ()
-	Dim As Integer x, y, r, mx, my, nr, nx, ny, t
-	Dim As Integer col, c
+	Dim As Integer x, y, t, d, a, b, r, d0, d1, d2, d3, d4, ny, nx
+	Dim As Double w, w1, w2
+	Dim As Integer t1, t2, t3, t4, qx, qy, c, mx, my
+	Dim As Integer xp(-MAXCNT To 2*MAXCNT), yp(-MAXCNT To 2*MAXCNT), cnt
 
-	mx = DD
-	my = DD
-	r = RR
+	mx = (SAS-1)/2
+	my = (SAS-1)/2
 
-	fillcircle (mx, my, r, CBLACK)		' the stone (later black or white)
-
-	For ny = 0 To 2*r-1
-		nx = Int(Sqr((2*r+1)^2-ny^2)+0.5)
-		For x = nx-1 To nx+1
-			t = drawcircle (mx+x, my+ny, r, CWHITE)		' place stone as close as possible without collision...
-			If t=0 Then nx = x : Exit For
+	For x = -RR To RR
+		y = Int(Sqr(RR^2-x^2)+0.5)
+		For t = RR-y To RR+y
+			If sa(RR+x,t)=0 Then sa(RR+x,t) = CSTONE
+			If sa(t,RR+x)=0 Then sa(t,RR+x) = CSTONE
 		Next
-		For x = 0 To nx
-			If x=nx Then c = CLIB Else c = CINF		' ...gives position of liberty, rest is influence
-			drawpixel (mx+x, my+ny, c)
-			drawpixel (mx+x, my+ny, c)
-			drawpixel (mx-x, my+ny, c)
-			drawpixel (mx+x, my-ny, c)
-			drawpixel (mx-x, my-ny, c)
-			drawpixel (mx+ny, my+x, c)
-			drawpixel (mx-ny, my+x, c)
-			drawpixel (mx+ny, my-x, c)
-			drawpixel (mx-ny, my-x, c)
+		sa(RR+x,RR+y) = CCIRC
+		sa(RR+x,RR-y) = CCIRC
+		sa(RR+y,RR+x) = CCIRC
+		sa(RR-y,RR+x) = CCIRC
+	Next
+
+	For x = -(2*RR+2) To 2*RR+2
+		For y = -(2*RR+2) To 2*RR+2
+			nx = mx+x
+			ny = my+y
+			t = testcircle (mx,my,nx,ny)
+			If t=1 And Not (x=0 And y=0) Then
+				ar(nx,ny) = CLIB
+				xp(cnt) = x : yp(cnt) = y
+				cnt+=1
+			ElseIf t>=2 Then
+				ar(nx,ny) = CINF
+			EndIf
 		Next
 	Next
 
-	maxlib = 0				' count liberties
-	For y = 0 To SAS-1
-		For x = 0 To SAS-1
-			If sa(x,y)=CLIB Then maxlib += 1
+	maxlib = cnt
+
+	For y = -RR To RR
+		For x = -RR To RR
+			If sa(RR+x,RR+y)>0 Then
+				ar(mx+x,my+y) = sa(RR+x,RR+y)
+			EndIf
+		Next
+	Next
+
+	For t = cnt-1 To 2 Step -1
+		For d = 0 To t-1
+			w1 = ATan2(yp(d),xp(d))
+			w2 = ATan2(yp(d+1),xp(d+1))
+			If w1>w2 Then
+				Swap xp(d), xp(d+1)
+				Swap yp(d), yp(d+1)
+			EndIf
+		Next
+	Next
+
+	For t = 0 To cnt-1
+		xp(t-cnt) = xp(t) : yp(t-cnt) = yp(t)
+		xp(t+cnt) = xp(t) : yp(t+cnt) = yp(t)
+	Next
+
+	For qy = 0 To (SAS-1)/2-1
+		For qx = 0 To (SAS-1)/2-1
+
+			If qx>=qy Then
+				w = Sqr(qx^2+qy^2)
+
+				t = Int((ATan2(qy,qx)/PI+0.5)*cnt)
+
+				c = 0
+
+				If w<Sqr(2)*2*RR-3 Then
+
+					c = CLD2
+
+				ElseIf w<Sqr(2)*2*RR+4 Then
+
+					nx = mx+qx
+					ny = my+qy
+					Const U = 6
+					For t1 = U To -U Step -1
+						If testcircle (mx,my,nx-xp(t-cnt/8-t1),ny-yp(t-cnt/8-t1))>1 Then t1+=1 : Exit For
+					Next
+					For t2 = U To -U Step -1
+						If testcircle (mx,my,nx-xp(t+cnt/8+t2),ny-yp(t+cnt/8+t2))>1 Then t2+=1 : Exit For
+					Next
+					For t3 = U To -U Step -1
+						If testcircle (nx,ny,mx+xp(t+cnt/8+t3),my+yp(t+cnt/8+t3))>1 Then t3+=1 : Exit For
+					Next
+					For t4 = U To -U Step -1
+						If testcircle (nx,ny,mx+xp(t-cnt/8-t4),my+yp(t-cnt/8-t4))>1 Then t4+=1 : Exit For
+					Next
+					d0 = dist(mx,my,nx,ny)
+					d1 = dist(nx-xp(t-cnt/8-t1),ny-yp(t-cnt/8-t1),nx-xp(t+cnt/8+t2),ny-yp(t+cnt/8+t2))
+					d2 = dist(mx+xp(t-cnt/8-t4),my+yp(t-cnt/8-t4),mx+xp(t+cnt/8+t3),my+yp(t+cnt/8+t3))
+					d3 = dist(nx-xp(t-cnt/8-t1),ny-yp(t-cnt/8-t1),mx+xp(t-cnt/8-t4),my+yp(t-cnt/8-t4))
+					d4 = dist(mx+xp(t+cnt/8+t3),my+yp(t+cnt/8+t3),nx-xp(t+cnt/8+t2),ny-yp(t+cnt/8+t2))
+					c = CLD2
+					If d1<d0 Or d2<d0 Or d3<d0 Or d4<d0 Then c = CLD3
+					If d0=d1 And d1=d2 And d2=d3 And d3=d4 Then c = CED2
+
+				ElseIf w<Sqr(3)*2*RR-3 Then
+
+					c = CLD3
+
+				ElseIf w<Sqr(3)*2*RR+4 Then
+
+					nx = mx+qx
+					ny = my+qy
+					Const U = 10
+					For t1 = U To -U Step -1
+						If testcircle (mx,my,nx-xp(t-cnt/12-t1),ny-yp(t-cnt/12-t1))>1 Then t1+=1 : Exit For
+					Next
+					For t2 = U To -U Step -1
+						If testcircle (mx,my,nx-xp(t+cnt/12+t2),ny-yp(t+cnt/12+t2))>1 Then t2+=1 : Exit For
+					Next
+					For t3 = U To -U Step -1
+						If testcircle (nx,ny,mx+xp(t+cnt/12+t3),my+yp(t+cnt/12+t3))>1 Then t3+=1 : Exit For
+					Next
+					For t4 = U To -U Step -1
+						If testcircle (nx,ny,mx+xp(t-cnt/12-t4),my+yp(t-cnt/12-t4))>1 Then t4+=1 : Exit For
+					Next
+					d1 = testcircle(nx-xp(t-cnt/12-t1),ny-yp(t-cnt/12-t1),nx-xp(t+cnt/12+t2),ny-yp(t+cnt/12+t2))
+					d2 = testcircle(mx+xp(t-cnt/12-t4),my+yp(t-cnt/12-t4),mx+xp(t+cnt/12+t3),my+yp(t+cnt/12+t3))
+					d3 = testcircle(nx-xp(t-cnt/12-t1),ny-yp(t-cnt/12-t1),mx+xp(t-cnt/12-t4),my+yp(t-cnt/12-t4))
+					d4 = testcircle(mx+xp(t+cnt/12+t3),my+yp(t+cnt/12+t3),nx-xp(t+cnt/12+t2),ny-yp(t+cnt/12+t2))
+					c = CLD3
+					If d1>1 Or d2>1 Or d3>1 Or d4>1 Then c = CLD4
+					If d1=1 Or d2=1 Or d3=1 Or d4=1 Then c = CED3
+
+				ElseIf w<2*2*RR-3 Then
+
+					c = CLD4
+
+				ElseIf w<2*2*RR+4 Then
+
+					nx = mx+qx
+					ny = my+qy
+					d=0
+					For a = -3 To 3
+						d Or= testcircle (nx,ny, mx+xp(t+a), my+yp(t+a))
+					Next
+					If d=1 Then c = CED4
+					If d=3 Then c = CLD4
+
+				EndIf
+
+				If ar(mx+qx,my+qy)=0 Then
+					ar(mx+qx,my+qy) = c
+					ar(mx-qx,my+qy) = c
+					ar(mx-qx,my-qy) = c
+					ar(mx+qx,my-qy) = c
+					ar(mx+qy,my+qx) = c
+					ar(mx+qy,my-qx) = c
+					ar(mx-qy,my-qx) = c
+					ar(mx-qy,my+qx) = c
+				EndIf
+			EndIf
+
 		Next
 	Next
 End Sub
@@ -508,13 +647,13 @@ End Function
 '
 Sub drawstone (mx As Integer, my As Integer, sn As Integer)
 	If showlib And showinf Then
-		mycolor (CLIB) : mycircle (mx, my, LLIB, 2*RR+1.5)
-		mycolor (CINF) : mycircle (mx, my, LINF, 2*RR+0.5)
+		mycolor (CLIB) : mycircle (mx, my, LLIB, 2*RR+0.5)
+		mycolor (CINF) : mycircle (mx, my, LINF, 2*RR-0.5)
 	ElseIf showlib Then
-		mycolor (CLIB) : mycircle (mx, my, LLIB, 2*RR+1.5)
-		mycolor (CBOARD) : mycircle (mx, my, LINF, 2*RR+0.5)
+		mycolor (CLIB) : mycircle (mx, my, LLIB, 2*RR+0.5)
+		mycolor (CBOARD) : mycircle (mx, my, LINF, 2*RR-0.5)
 	ElseIf showinf Then
-		mycolor (CINF) : mycircle (mx, my, LINF, 2*RR+0.5)
+		mycolor (CINF) : mycircle (mx, my, LINF, 2*RR-0.5)
 	EndIf
 	mycolor (stonecolor(sn)) : mycircle (mx, my, LSTONE, RR)
 End Sub
@@ -538,17 +677,17 @@ Sub copystone (mx As Integer, my As Integer, sn As Integer)
 	Dim As Integer x, y, c
 	Dim As Integer px, py, d
 
-	For y = 0 To SAS-1
-		py = my+y-DD
+	For y = -2*RR To 2*RR
+		py = my+y
 		If py>=0 And py<BAS Then
-			For x = 0 To SAS-1
-				px = mx+x-DD
+			For x = -2*RR To 2*RR
+				px = mx+x
 				If px>=0 And px<BAS Then
-					c = sa(x,y)
-					If c>0 Then
+					c = ar((SAS-1)/2+x,(SAS-1)/2+y)
+					If c=CSTONE Or c=CCIRC Or c=CINF Or c=CLIB Then
 						d = ba(px,py)
 						If Not ((c=CLIB Or c=CINF) And Not (d=CBOARD Or d=CBOARDLINES Or d=CLIB)) Then
-							If c=CBLACK Then c = stonecolor (sn)
+							If c=CSTONE Then c = stonecolor (sn)
 							ba(px,py) = c
 						EndIf
 					EndIf
@@ -582,13 +721,13 @@ Function checklib (s As Integer) As Integer
 	my = stones(s).y
 
 	r = 0
-	For y = 0 To SAS-1
-		py = my-DD+y
+	For y = -2*RR To 2*RR
+		py = my+y
 		If py>=0 And py<BAS Then
-			For x = 0 To SAS-1
-				px = mx-DD+x
+			For x = -2*RR To 2*RR
+				px = mx+x
 				If px>=0 And px<BAS Then
-					If sa(x,y)=CLIB And ba(px,py)=CLIB Then r += 1
+					If ar((SAS-1)/2+x,(SAS-1)/2+y)=CLIB And ba(px,py)=CLIB Then r += 1
 				EndIf
 			Next
 		EndIf
@@ -631,8 +770,7 @@ End Sub
 ' put values in con depending on stone distances
 '
 Sub makeconnections ()
-	Dim As Integer t, d, x, y, x2, y2
-	Dim As Double dx, dy, w
+	Dim As Integer t, d, x, y, x2, y2, dx, dy, c
 
 	nconl = 0
 	For t = 0 To MAXSTONES-1
@@ -646,11 +784,15 @@ Sub makeconnections ()
 					If x2>0 Then
 						dx = x2-x
 						dy = y2-y
-						w = Sqr(dx^2+dy^2)
-						If w<Sqr(2)*DD Then
-							newconl (stonecolor(t), 2, t, d, x, y, x2, y2)
-						ElseIf w<2*DD Then
-							newconl (stonecolor(t), 1, t, d, x, y, x2, y2)
+						If dx^2+dy^2<(2*DD+3)^2 Then
+							c = ar((SAS-1)/2+dx,(SAS-1)/2+dy)
+							If c>0 Then
+								If c<CED2 Then
+									newconl (stonecolor(t), 2, t, d, x, y, x2, y2)
+								ElseIf c<CED4 Then
+									newconl (stonecolor(t), 1, t, d, x, y, x2, y2)
+								EndIf
+							EndIf
 						EndIf
 					EndIf
 				EndIf
@@ -699,13 +841,16 @@ Sub drawconnections ()
 				w = Sqr(dx^2+dy^2)
 				dx /= w
 				dy /= w
-				myline (x+dy*5, y-dx*5, x2+dy*5, y2-dx*5, conl(t).c)
-				myline (x-dy*5, y+dx*5, x2-dy*5, y2+dx*5, conl(t).c)
+				Const U = 5
+				myline (x+dy*U, y-dx*U, x2+dy*U, y2-dx*U, 1.2, conl(t).c)
+				myline (x-dy*U, y+dx*U, x2-dy*U, y2+dx*U, 1.2, conl(t).c)
+				'myline (x, y, x2, y2, 1, conl(t).c)
+				'myline (x, y, x2, y2, 3, conl(t).c)
 			Else
-				If showweak Then myline (x, y, x2, y2, conl(t).c)
+				If showweak Then myline (x, y, x2, y2, 1, conl(t).c)
 			EndIf
 		ElseIf conl(t).s=1 Then
-			If showweak Then myline (x, y, x2, y2, conl(t).c)
+			If showweak Then myline (x, y, x2, y2, 1, conl(t).c)
 		EndIf
 	Next
 End Sub
@@ -1179,7 +1324,7 @@ Sub startmenu ()
 		mytextout (400, 20*16, 0, "4) start shared file game as white")
 		mytextout (400, 18*16, 0, "5) start single computer game")
 
-		i = Inkey
+		i = InKey
 		If i="1" Then gametype = 1 : spieler = 1
 		If i="2" Then gametype = 1 : spieler = 2
 		If i="3" Then gametype = 2 : spieler = 1
@@ -1202,7 +1347,7 @@ Sub startmenu ()
 		mytextout (430, 16*16, 0, "7) 17x17 board")
 		mytextout (430, 14*16, 0, "9) 19x19 board")
 
-		i = Inkey
+		i = InKey
 		If i="0" Then BS = 9
 		If i="1" Then BS = 11
 		If i="3" Then BS = 13
@@ -1227,7 +1372,7 @@ Function myinput (ByRef x As Integer, ByRef y As Integer) As Integer
 		mybox (30, 22*16+4, 200, 20*16+4, 0.1, CBOARD)
 		mycolor (stonecolor (stonenr))
 		mytextout (38, 21*16, 0.1, "input x,y: "+s)
-		i = Inkey
+		i = InKey
 		If i=Chr(13) Then Exit Do
 		If i=Chr(8) Then s = Left(s,Len(s)-1) : Continue Do
 		If Asc(i)>=32 And Asc(i)<128 Then s += i
@@ -1242,18 +1387,60 @@ Function myinput (ByRef x As Integer, ByRef y As Integer) As Integer
 End Function
 
 
+' show board pixels
+'
+
+Dim Shared As UByte Ptr texdat
+Dim Shared As Integer texname
+
+Sub showtexture ()
+	Dim As UByte Ptr a
+	Dim As Integer x, y, c
+
+	a = texdat
+	For y = 0 To BAS-1
+		For x = 0 To BAS-1
+			c = col(ba(x,y))
+			*a = (c Shr 16) And 255 : a += 1
+			*a = (c Shr 8) And 255 : a += 1
+			*a = c And 255 : a += 1
+		Next
+	Next
+
+	glEnable (GL_TEXTURE_2D)
+
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+	glPixelStorei (GL_PACK_ALIGNMENT, 1)
+	glPixelStorei (GL_UNPACK_ALIGNMENT, 1)
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_RGB8, BAS, BAS, 0, GL_RGB, GL_UNSIGNED_BYTE, texdat)
+
+	glColor3f (1,1,1)
+	glBegin (GL_TRIANGLE_STRIP)
+	glTexCoord2f (0.0, 0.0) : glVertex2f (0, 0)
+	glTexCoord2f (1.0, 0.0) : glVertex2f (BAS, 0)
+	glTexCoord2f (0.0, 1.0) : glVertex2f (0, BAS)
+	glTexCoord2f (1.0, 1.0) : glVertex2f (BAS, BAS)
+	glEnd ()
+
+	glDisable (GL_TEXTURE_2D)
+End Sub
+
+
 ' main
 '
 Sub main ()
 	Dim As Integer mx,my,wheel,button, lbuttoncnt, rbuttoncnt
-	Dim As Integer x, y, t, wantinput, oldmx, oldmy, owheel
+	Dim As Integer x, y, t, wantinput, oldmx, oldmy, owheel, showtex
 	Dim As String i
 	Dim As HWND hwnd
 	Dim As HDC hdc
 	Dim As HGLRC hglrc
 	Dim As HFONT hfont
 
-	ScreenRes SCRX,SCRY,32,,FB.GFX_OPENGL Or FB.GFX_MULTISAMPLE
+	ScreenRes SCRX,SCRY,24,,FB.GFX_OPENGL Or FB.GFX_MULTISAMPLE
 
 	ScreenControl (FB.GET_WINDOW_HANDLE, Cast (Integer, hwnd))
 	'MoveWindow (hwnd, 0, 0, SCRX, SCRY, 1)
@@ -1279,7 +1466,7 @@ Sub main ()
 	MAXCONS = MAXSTONES*3
 	ReDim conl(MAXCONS)
 
-	BAS = BS*DD
+	BAS = BS*DD+1
 	ReDim ba(BAS,BAS), bb(BAS,BAS)
 
 	If gametype=1 Then
@@ -1302,6 +1489,10 @@ Sub main ()
 
 	stonenr = 1
 
+	texdat = Allocate (3*BAS*BAS)
+	glGenTextures (1, @texname)
+	glBindTexture (GL_TEXTURE_2D, texname)
+
 	Do
 		glClear (GL_COLOR_BUFFER_BIT Or GL_DEPTH_BUFFER_BIT)
 
@@ -1309,8 +1500,12 @@ Sub main ()
 		drawmenu ()
 
 		viewport (VBOARD)
-		drawboard ()
-		drawstones ()
+		If showtex Then
+			showtexture ()
+		Else
+			drawboard ()
+			drawstones ()
+		EndIf
 
 		oldmx = mx : oldmy = my : owheel = wheel
 		GetMouse mx,my,wheel,button
@@ -1319,8 +1514,8 @@ Sub main ()
 		If button=0 Then lbuttoncnt = 0 : rbuttoncnt = 0
 		If button=1 Then lbuttoncnt += 1
 		If button=2 Then rbuttoncnt += 1
-		If wheel>owheel Then zoom *= 1.1
-		If wheel<owheel Then zoom /= 1.1
+		If wheel<owheel Then zoom *= 1.1
+		If wheel>owheel Then zoom /= 1.1
 
 		If rbuttoncnt>0 Then
 			panx += (oldmx-mx)*zoom
@@ -1377,7 +1572,7 @@ Sub main ()
 		EndIf
 
 
-		i = Inkey
+		i = InKey
 		If i=Chr(27) Then Exit Do
 
 		If i="s" Then savestones ()
@@ -1388,6 +1583,7 @@ Sub main ()
 			If t>0 Then killstone (t) : redrawboard ()
 		EndIf
 		If i="i" Then wantinput = 1
+		If i="t" Then showtex Xor= 1
 
 		If i="f" Then showarea Xor=1
 
