@@ -51,8 +51,9 @@
 		linien auch bei +0.5 wie kreismittelpunkte
 		kreisradius noch +0.5 (in zoom sieht mans)
 		pixel board als textur anzeigbar
-		vier distanzen d4 (weak <2*DD), d3 (<sqr(3)*DD), d2 (strong <sqr(2)*DD), d1 (touching DD)
+		vier distanzen d4 ("weak" <2*DD), d3 ("near" <sqr(3)*DD), d2 ("strong" <sqr(2)*DD), d1 ("touching" =DD)
 		für alle vier distanzen einen kreis malen wie für freiheiten makestone(), nichts berechnen
+		d1 und d3 schalter für grouping, territory
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -63,16 +64,16 @@
 			d.h. setzen in den kreis ist nicht möglich
 			dazu muss im savefile gespeichert werden wo das war
 		steine ausblenden (für area besser sichtbar)
-		cut mit d1=d2 könnte auch bleiben. evtl schalter dafür
+		cut mit gleicher distanz könnte auch bleiben. evtl schalter dafür
 		config file mit schaltern, email namen, save file name, fullscreen/window, etc.
 		opengl: freiheiten als gaussbuckel darstellen, evtl mit variabler breite
 			das wäre auch die lösung für transparentes inf
-		kreise die mit umfang überlappen
+		alles auf hexgitter
 		schalter für no grouping (bei keiner distanz)
 
 	todo
-		touching distance und d3 (sqr(3)*DD) schalter für grouping, territory
-		mögliche connections in echtzeit anzeigen
+		mögliche connections in echtzeit anzeigen (auch gecuttet?)
+		makestone noch für den rand (nix mehr solution of equation, das werden tests)
 		fullscreen/fenster auswahl
 
 '/
@@ -117,7 +118,7 @@ CWHITE			' white stone
 CBACKGROUND		' the background
 CSTONE			' stone
 CCIRC				' circumference
-CINF				' influence area (grey) (<d1)
+CINF				' influence area (gray) (<d1)
 CLIB				' liberties circle (red) (=d1)
 CLD2				' <d2
 CED2				' =d2
@@ -161,7 +162,7 @@ Dim Shared As UByte bb(BAS,BAS)		' board array for area calc
 
 Type connection
 	As Integer c		' color 1=black 2=white
-	As Integer s		' 0=not there, strength 1=weak 2=strong
+	As Integer s		' 0=not there, strength 4=weak 3=near 2=strong 1=touching
 	As Integer t, d	' stone numbers, 0=edge
 	As Integer x1, y1, x2, y2
 End Type
@@ -176,7 +177,7 @@ Type queue
 End Type
 Dim Shared As queue qu
 
-Dim Shared As Integer showinf, showlib, showweak, showstrong, shownum		' toggle switches for display
+Dim Shared As Integer showinf, showlib, showcon, shownum, showhov		' toggle switches for display
 Dim Shared As Integer showarea
 
 Dim Shared As Integer togglecut, togglegrp, togglearea		' toggle switches for variations
@@ -206,8 +207,9 @@ Const LBOARDLINES = 0.1
 Const LLIB = 0.2
 Const LINF = 0.3
 Const LSTONE = 0.4
-Const LAREA = 0.5
-Const LNUM = 0.6
+Const LCON = 0.5
+Const LAREA = 0.6
+Const LNUM = 0.7
 
 Dim Shared As Double panx = -20, pany = -20, zoom = 1			' board panning and zooming
 
@@ -256,8 +258,10 @@ End Sub
 
 ' draw a thick line as quad
 '
-Sub myline (x1 As Double, y1 As Double, x2 As Double, y2 As Double, LW As Double, c As Integer)
+Sub myline (x1 As Double, y1 As Double, x2 As Double, y2 As Double, LW As Double, lt As Integer, c As Integer)
+	Dim As Integer t
 	Dim As Double dx, dy, d, ex, ey, fx, fy
+	Dim As Double nx1, ny1, nx2, ny2
 
 	mycolor (c)
 	dx = x2-x1
@@ -273,12 +277,61 @@ Sub myline (x1 As Double, y1 As Double, x2 As Double, y2 As Double, LW As Double
 	fx = -dy : fy = dx
 	x1 += 0.5 : y1 += 0.5
 	x2 += 0.5 : y2 += 0.5
-	glBegin (GL_QUADS)
-	glVertex3d (x1-LW*ex-LW*fx, y1-LW*ey-LW*fy, LSTONE)
-	glVertex3d (x2+LW*ex-LW*fx, y2+LW*ey-LW*fy, LSTONE)
-	glVertex3d (x2+LW*ex+LW*fx, y2+LW*ey+LW*fy, LSTONE)
-	glVertex3d (x1-LW*ex+LW*fx, y1-LW*ey+LW*fy, LSTONE)
-	glEnd ()
+
+	If lt=2 Then
+
+		Const U = 5
+		nx1 = x1 - fx*U : ny1 = y1 - fy*U
+		nx2 = x2 - fx*U : ny2 = y2 - fy*U
+		glBegin (GL_QUADS)
+		glVertex3d (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
+		glVertex3d (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
+		glVertex3d (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
+		glVertex3d (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
+		glEnd ()
+		nx1 = x1 + fx*U : ny1 = y1 + fy*U
+		nx2 = x2 + fx*U : ny2 = y2 + fy*U
+		glBegin (GL_QUADS)
+		glVertex3d (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
+		glVertex3d (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
+		glVertex3d (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
+		glVertex3d (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
+		glEnd ()
+
+	ElseIf lt=1 Then
+
+		nx1 = x1 + (RR-0.5)*ex : ny1 = y1 + (RR-0.5)*ey
+		nx2 = x1 + (RR+0.5)*ex : ny2 = y1 + (RR+0.5)*ey
+		glBegin (GL_QUADS)
+		glVertex3d (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
+		glVertex3d (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
+		glVertex3d (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
+		glVertex3d (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
+		glEnd ()
+
+	ElseIf lt=4 Then
+
+		For t = 0 To Int(d) Step 6
+			nx1 = x1 + t*ex : ny1 = y1 + t*ey
+			nx2 = x1 + (t+1)*ex : ny2 = y1 + (t+1)*ey
+
+			glBegin (GL_QUADS)
+			glVertex3d (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
+			glVertex3d (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
+			glVertex3d (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
+			glVertex3d (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
+			glEnd ()
+		Next
+
+	Else
+		glBegin (GL_QUADS)
+		glVertex3d (x1-LW*ex-LW*fx, y1-LW*ey-LW*fy, LCON)
+		glVertex3d (x2+LW*ex-LW*fx, y2+LW*ey-LW*fy, LCON)
+		glVertex3d (x2+LW*ex+LW*fx, y2+LW*ey+LW*fy, LCON)
+		glVertex3d (x1-LW*ex+LW*fx, y1-LW*ey+LW*fy, LCON)
+		glEnd ()
+	EndIf
+
 End Sub
 
 
@@ -514,8 +567,8 @@ Sub makestone ()
 
 	For t = cnt-1 To 2 Step -1
 		For d = 0 To t-1
-			w1 = ATan2(yp(d),xp(d))
-			w2 = ATan2(yp(d+1),xp(d+1))
+			w1 = Atan2(yp(d),xp(d))
+			w2 = Atan2(yp(d+1),xp(d+1))
 			If w1>w2 Then
 				Swap xp(d), xp(d+1)
 				Swap yp(d), yp(d+1)
@@ -534,7 +587,7 @@ Sub makestone ()
 			If qx>=qy Then
 				w = Sqr(qx^2+qy^2)
 
-				t = Int((ATan2(qy,qx)/PI+0.5)*cnt)
+				t = Int((Atan2(qy,qx)/PI+0.5)*cnt)
 
 				c = 0
 
@@ -787,10 +840,14 @@ Sub makeconnections ()
 						If dx^2+dy^2<(2*DD+3)^2 Then
 							c = ar((SAS-1)/2+dx,(SAS-1)/2+dy)
 							If c>0 Then
-								If c<CED2 Then
-									newconl (stonecolor(t), 2, t, d, x, y, x2, y2)
-								ElseIf c<CED4 Then
+								If c=CLIB Then
 									newconl (stonecolor(t), 1, t, d, x, y, x2, y2)
+								ElseIf c<CED2 Then
+									newconl (stonecolor(t), 2, t, d, x, y, x2, y2)
+								ElseIf c<CED3 Then
+									newconl (stonecolor(t), 3, t, d, x, y, x2, y2)
+								ElseIf c<CED4 Then
+									newconl (stonecolor(t), 4, t, d, x, y, x2, y2)
 								EndIf
 							EndIf
 						EndIf
@@ -801,22 +858,22 @@ Sub makeconnections ()
 			If x<RA*DD Then
 				newconl (stonecolor(t), 2, t, 0, x, y, 0, y)
 			ElseIf x<RR+DD Then
-				newconl (stonecolor(t), 1, t, 0, x, y, 0, y)
+				newconl (stonecolor(t), 4, t, 0, x, y, 0, y)
 			EndIf
 			If x>=BAS-RA*DD Then
 				newconl (stonecolor(t), 2, t, 0, x, y, BAS-1, y)
 			ElseIf x>=BAS-RR-DD Then
-				newconl (stonecolor(t), 1, t, 0, x, y, BAS-1, y)
+				newconl (stonecolor(t), 4, t, 0, x, y, BAS-1, y)
 			EndIf
 			If y<RA*DD Then
 				newconl (stonecolor(t), 2, t, 0, x, y, x, 0)
 			ElseIf y<RR+DD Then
-				newconl (stonecolor(t), 1, t, 0, x, y, x, 0)
+				newconl (stonecolor(t), 4, t, 0, x, y, x, 0)
 			EndIf
 			If y>=BAS-RA*DD Then
 				newconl (stonecolor(t), 2, t, 0, x, y, x, BAS-1)
 			ElseIf y>=BAS-RR-DD Then
-				newconl (stonecolor(t), 1, t, 0, x, y, x, BAS-1)
+				newconl (stonecolor(t), 4, t, 0, x, y, x, BAS-1)
 			EndIf
 		EndIf
 	Next
@@ -834,23 +891,14 @@ Sub drawconnections ()
 		y = conl(t).y1
 		x2 = conl(t).x2
 		y2 = conl(t).y2
-		If conl(t).s=2 Then
-			If showstrong Then
-				dx = x2-x
-				dy = y2-y
-				w = Sqr(dx^2+dy^2)
-				dx /= w
-				dy /= w
-				Const U = 5
-				myline (x+dy*U, y-dx*U, x2+dy*U, y2-dx*U, 1.2, conl(t).c)
-				myline (x-dy*U, y+dx*U, x2-dy*U, y2+dx*U, 1.2, conl(t).c)
-				'myline (x, y, x2, y2, 1, conl(t).c)
-				'myline (x, y, x2, y2, 3, conl(t).c)
-			Else
-				If showweak Then myline (x, y, x2, y2, 1, conl(t).c)
-			EndIf
-		ElseIf conl(t).s=1 Then
-			If showweak Then myline (x, y, x2, y2, 1, conl(t).c)
+		If conl(t).s=1 Then
+			myline (x, y, x2, y2, 1.5, 1, CINF)			' touching, gray short line
+		ElseIf conl(t).s=2 Then
+			myline (x, y, x2, y2, 1.2, 2, conl(t).c)	' strong, double line
+		ElseIf conl(t).s=3 Then
+			myline (x, y, x2, y2, 1, 3, conl(t).c)		' near, normal line
+		ElseIf conl(t).s=4 Then
+			myline (x, y, x2, y2, 1, 4, conl(t).c)		' weak, dashed line
 		EndIf
 	Next
 End Sub
@@ -884,7 +932,7 @@ Function cutting (x0 As Integer, y0 As Integer, x1 As Integer, y1 As Integer, a0
 End Function
 
 
-' removes weak connections from con matrix when they are cut by shorter ones
+' removes connections from con list when they are cut by shorter ones
 '
 Sub cutconnections ()
 	Dim As Integer a, b
@@ -935,8 +983,6 @@ Sub grouplibs ()
 	Dim As Integer t, d, x, y, s, gnr, gef
 	Dim As Integer grp(MAXSTONES)
 
-	'Clear grp(0),,MAXSTONES*SizeOf(grp)
-
 	gnr = 1
 	For t = 0 To MAXSTONES-1
 		If stones(t).x>0 And grp(t)=0 Then		' stone gets a new grp number
@@ -946,7 +992,7 @@ Sub grouplibs ()
 				For d = 0 To nconl-1		' copy grp number to connected stones
 					x = conl(d).t
 					y = conl(d).d
-					If y>0 And conl(d).s>1-togglegrp Then
+					If y>0 And conl(d).s>0 And conl(d).s<=togglegrp+1 Then
 						If grp(x)=gnr And grp(y)=0 Then grp(y) = gnr : gef = 1
 						If grp(y)=gnr And grp(x)=0 Then grp(x) = gnr : gef = 1
 					EndIf
@@ -1062,7 +1108,7 @@ Sub calcarea ()
 	Next
 
 	For t = 0 To nconl-1		' draw connection lines
-		If conl(t).s>1-togglearea Then
+		If conl(t).s>0 And conl(t).s<=togglearea+1 Then
 			x = conl(t).x1
 			y = conl(t).y1
 			x2 = conl(t).x2
@@ -1179,24 +1225,23 @@ End Function
 ' draw the menu for the switches
 '
 Sub drawmenu ()
-	Dim As String ts(2), tc(3)
+	Dim As String ts(2), tc(3), tt(4)
 
 	ts(0) = "off" : ts(1) = "on"
 	tc(0) = "none" : tc(1) = "longer" : tc(2) = "both"
+	tt(0) = "touching" : tt(1) = "strong" : tt(2) = "near" : tt(3) = "weak"
 
 	mycolor (CBOARD)
-
-	mytextout (30, 35*16, 0, "f) show territory: "+ts(showarea))
 
 	mytextout (30, 33*16, 0, "1) show influence: "+ts(showinf))
 	mytextout (30, 32*16, 0, "2) show liberties: "+ts(showlib))
 	mytextout (30, 31*16, 0, "3) show numbers: "+ts(shownum))
-	mytextout (30, 30*16, 0, "4) show weak connections: "+ts(showweak))
-	mytextout (30, 29*16, 0, "5) show strong connections: "+ts(showstrong))
+	mytextout (30, 30*16, 0, "4) show connections: "+ts(showcon))
+	mytextout (30, 29*16, 0, "5) hovering connections: "+ts(showhov))
 
 	mytextout (30, 27*16, 0, "8) connection cutting: "+tc(togglecut))
-	mytextout (30, 26*16, 0, "9) weak connection groups: "+ts(togglegrp))
-	mytextout (30, 25*16, 0, "0) weak connection area: "+ts(togglearea))
+	mytextout (30, 26*16, 0, "9) connection groups: "+tt(togglegrp))
+	mytextout (30, 25*16, 0, "0) connection area: "+tt(togglearea))
 
 	mytextout (30, 23*16, 0, "last move: "+Str(lastmovex)+" "+Str(lastmovey))
 End Sub
@@ -1324,7 +1369,7 @@ Sub startmenu ()
 		mytextout (400, 20*16, 0, "4) start shared file game as white")
 		mytextout (400, 18*16, 0, "5) start single computer game")
 
-		i = InKey
+		i = Inkey
 		If i="1" Then gametype = 1 : spieler = 1
 		If i="2" Then gametype = 1 : spieler = 2
 		If i="3" Then gametype = 2 : spieler = 1
@@ -1347,7 +1392,7 @@ Sub startmenu ()
 		mytextout (430, 16*16, 0, "7) 17x17 board")
 		mytextout (430, 14*16, 0, "9) 19x19 board")
 
-		i = InKey
+		i = Inkey
 		If i="0" Then BS = 9
 		If i="1" Then BS = 11
 		If i="3" Then BS = 13
@@ -1372,7 +1417,7 @@ Function myinput (ByRef x As Integer, ByRef y As Integer) As Integer
 		mybox (30, 22*16+4, 200, 20*16+4, 0.1, CBOARD)
 		mycolor (stonecolor (stonenr))
 		mytextout (38, 21*16, 0.1, "input x,y: "+s)
-		i = InKey
+		i = Inkey
 		If i=Chr(13) Then Exit Do
 		If i=Chr(8) Then s = Left(s,Len(s)-1) : Continue Do
 		If Asc(i)>=32 And Asc(i)<128 Then s += i
@@ -1419,10 +1464,10 @@ Sub showtexture ()
 
 	glColor3f (1,1,1)
 	glBegin (GL_TRIANGLE_STRIP)
-	glTexCoord2f (0.0, 0.0) : glVertex2f (0, 0)
-	glTexCoord2f (1.0, 0.0) : glVertex2f (BAS, 0)
-	glTexCoord2f (0.0, 1.0) : glVertex2f (0, BAS)
-	glTexCoord2f (1.0, 1.0) : glVertex2f (BAS, BAS)
+	glTexCoord2f (0, 0) : glVertex2f (0, 0)
+	glTexCoord2f (1, 0) : glVertex2f (BAS, 0)
+	glTexCoord2f (0, 1) : glVertex2f (0, BAS)
+	glTexCoord2f (1, 1) : glVertex2f (BAS, BAS)
 	glEnd ()
 
 	glDisable (GL_TEXTURE_2D)
@@ -1476,13 +1521,13 @@ Sub main ()
 
 	showinf = 0
 	showlib = 1
-	showweak = 1
-	showstrong = 1
+	showcon = 1
+	showhov = 1
 	shownum = 1
 	showarea = 0
 	togglecut = 1
-	togglegrp = 1
-	togglearea = 1
+	togglegrp = 3
+	togglearea = 3
 
 	initboard ()
 	makestone ()
@@ -1543,7 +1588,7 @@ Sub main ()
 
 		makeconnections ()
 		If togglecut>0 Then cutconnections ()
-		drawconnections ()
+		If showcon Then drawconnections ()
 
 		checklibs ()
 		grouplibs ()
@@ -1572,7 +1617,7 @@ Sub main ()
 		EndIf
 
 
-		i = InKey
+		i = Inkey
 		If i=Chr(27) Then Exit Do
 
 		If i="s" Then savestones ()
@@ -1590,12 +1635,12 @@ Sub main ()
 		If i="1" Then showinf Xor= 1
 		If i="2" Then showlib Xor= 1
 		If i="3" Then shownum Xor= 1
-		If i="4" Then showweak Xor= 1
-		If i="5" Then showstrong Xor= 1
+		If i="4" Then showcon Xor= 1
+		If i="5" Then showhov Xor= 1
 
 		If i="8" Then togglecut += 1 : togglecut Mod= 3
-		If i="9" Then togglegrp Xor= 1
-		If i="0" Then togglearea Xor= 1
+		If i="9" Then togglegrp += 1 : togglegrp Mod= 4
+		If i="0" Then togglearea += 1 : togglearea Mod= 4
 
 		Flip
 	Loop
