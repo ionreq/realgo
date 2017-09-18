@@ -70,6 +70,11 @@
 			das wäre auch die lösung für transparentes inf
 		alles auf hexgitter
 		schalter für no grouping (bei keiner distanz)
+		schalter für own connection cutting
+			dann muss man sich aber in der cutting() routine was für die = fälle überlegen,
+			da die immer auftreten wenn von einem stein mehr als eine connection abgehen
+		connections gehen von rand zu rand, nicht von mittelpunkt zu mittelpunkt
+			stein selber cuttet auch, d.h. connections gehen nicht durch steine, d3 ist grenzfall
 
 	todo
 		mögliche connections in echtzeit anzeigen (auch gecuttet?)
@@ -528,7 +533,7 @@ Sub makestone ()
 	mx = (SAS-1)/2
 	my = (SAS-1)/2
 
-	For x = -RR To RR
+	For x = -RR To RR						' stone with circumference
 		y = Int(Sqr(RR^2-x^2)+0.5)
 		For t = RR-y To RR+y
 			If sa(RR+x,t)=0 Then sa(RR+x,t) = CSTONE
@@ -540,7 +545,7 @@ Sub makestone ()
 		sa(RR-y,RR+x) = CCIRC
 	Next
 
-	For x = -(2*RR+2) To 2*RR+2
+	For x = -(2*RR+2) To 2*RR+2		' influence and liberty curve via collision with second stone
 		For y = -(2*RR+2) To 2*RR+2
 			nx = mx+x
 			ny = my+y
@@ -565,7 +570,7 @@ Sub makestone ()
 		Next
 	Next
 
-	For t = cnt-1 To 2 Step -1
+	For t = cnt-1 To 2 Step -1		' sort coos of liberties by their angle
 		For d = 0 To t-1
 			w1 = Atan2(yp(d),xp(d))
 			w2 = Atan2(yp(d+1),xp(d+1))
@@ -584,7 +589,7 @@ Sub makestone ()
 	For qy = 0 To (SAS-1)/2-1
 		For qx = 0 To (SAS-1)/2-1
 
-			If qx>=qy Then
+			If qx>=qy Then				' only first octant
 				w = Sqr(qx^2+qy^2)
 
 				t = Int((Atan2(qy,qx)/PI+0.5)*cnt)
@@ -595,7 +600,7 @@ Sub makestone ()
 
 					c = CLD2
 
-				ElseIf w<Sqr(2)*2*RR+4 Then
+				ElseIf w<Sqr(2)*2*RR+4 Then		' sqr(2) distance
 
 					nx = mx+qx
 					ny = my+qy
@@ -625,7 +630,7 @@ Sub makestone ()
 
 					c = CLD3
 
-				ElseIf w<Sqr(3)*2*RR+4 Then
+				ElseIf w<Sqr(3)*2*RR+4 Then		' sqr(3) distance
 
 					nx = mx+qx
 					ny = my+qy
@@ -654,7 +659,7 @@ Sub makestone ()
 
 					c = CLD4
 
-				ElseIf w<2*2*RR+4 Then
+				ElseIf w<2*2*RR+4 Then		' DD distance
 
 					nx = mx+qx
 					ny = my+qy
@@ -668,7 +673,7 @@ Sub makestone ()
 				EndIf
 
 				If ar(mx+qx,my+qy)=0 Then
-					ar(mx+qx,my+qy) = c
+					ar(mx+qx,my+qy) = c			' the other octants
 					ar(mx-qx,my+qy) = c
 					ar(mx-qx,my-qy) = c
 					ar(mx+qx,my-qy) = c
@@ -854,25 +859,46 @@ Sub makeconnections ()
 					EndIf
 				EndIf
 			Next
+			
 			Const RA = (2+Sqr(19))/5	' solution of a quadratic eq. for the distance of the two cutting stones
-			If x<RA*DD Then
+			
+			If x=RR Then
+				newconl (stonecolor(t), 1, t, 0, x, y, 0, y)			' left edge
+			ElseIf x<RA*DD Then
 				newconl (stonecolor(t), 2, t, 0, x, y, 0, y)
+			ElseIf x<Sqr(3)/2*DD+RR Then
+				newconl (stonecolor(t), 3, t, 0, x, y, 0, y)
 			ElseIf x<RR+DD Then
 				newconl (stonecolor(t), 4, t, 0, x, y, 0, y)
 			EndIf
-			If x>=BAS-RA*DD Then
+			
+			If x=BAS-1-RR Then
+				newconl (stonecolor(t), 1, t, 0, x, y, BAS-1, y)		' right edge
+			ElseIf x>BAS-1-RA*DD Then
 				newconl (stonecolor(t), 2, t, 0, x, y, BAS-1, y)
-			ElseIf x>=BAS-RR-DD Then
+			ElseIf x>BAS-1-(Sqr(3)/2*DD+RR) Then
+				newconl (stonecolor(t), 3, t, 0, x, y, BAS-1, y)
+			ElseIf x>BAS-1-(RR+DD) Then
 				newconl (stonecolor(t), 4, t, 0, x, y, BAS-1, y)
 			EndIf
-			If y<RA*DD Then
+			
+			If y=RR Then
+				newconl (stonecolor(t), 1, t, 0, x, y, x, 0)		' bottom edge
+			ElseIf y<RA*DD Then
 				newconl (stonecolor(t), 2, t, 0, x, y, x, 0)
+			ElseIf y<Sqr(3)/2*DD+RR Then
+				newconl (stonecolor(t), 3, t, 0, x, y, x, 0)
 			ElseIf y<RR+DD Then
 				newconl (stonecolor(t), 4, t, 0, x, y, x, 0)
 			EndIf
-			If y>=BAS-RA*DD Then
+			
+			If y=BAS-1-RR Then
+				newconl (stonecolor(t), 1, t, 0, x, y, x, BAS-1)		' top edge
+			ElseIf y>BAS-1-RA*DD Then
 				newconl (stonecolor(t), 2, t, 0, x, y, x, BAS-1)
-			ElseIf y>=BAS-RR-DD Then
+			ElseIf y>BAS-1-(Sqr(3)/2*DD+RR) Then
+				newconl (stonecolor(t), 3, t, 0, x, y, x, BAS-1)
+			ElseIf y>BAS-1-RR-DD Then
 				newconl (stonecolor(t), 4, t, 0, x, y, x, BAS-1)
 			EndIf
 		EndIf
@@ -917,12 +943,12 @@ Function cutting (x0 As Integer, y0 As Integer, x1 As Integer, y1 As Integer, a0
 		ab = -1
 	Else
 		xy = (a0 * (y1 - b1) + a1 * (b0 - y1) + x1 * (b1 - b0)) / denom
-		If xy>0 And xy<1 Then partial = 1
+		If xy>=0 And xy<=1 Then partial = 1
 		If partial Then
 			ab = (y1 * (x0 - a1) + b1 * (x1 - x0) + y0 * (a1 - x1)) / denom
 		EndIf
 	EndIf
-	If partial And ab>0 And ab<1 Then
+	If partial And ab>=0 And ab<=1 Then
 		ab = 1-ab
 		xy = 1-xy
 		Return 1
@@ -935,43 +961,30 @@ End Function
 ' removes connections from con list when they are cut by shorter ones
 '
 Sub cutconnections ()
-	Dim As Integer a, b
-	Dim As Integer t1, t2, d1, d2
-	Dim As Integer x1, y1, x2, y2
-	Dim As Integer x3, y3, x4, y4
-	Dim As Integer dx, dy, dd1, dd2
+	Dim As Integer x1, y1, x2, y2, x3, y3, x4, y4
+	Dim As Integer a, b, dx, dy, dd1, dd2
 
 	For a = 0 To nconl-1
-		x1 = conl(a).x1
-		y1 = conl(a).y1
-		x2 = conl(a).x2
-		y2 = conl(a).y2
-		dx = x2-x1
-		dy = y2-y1
+		x1 = conl(a).x1 : y1 = conl(a).y1
+		x2 = conl(a).x2 : y2 = conl(a).y2
+		dx = x2-x1 : dy = y2-y1
 		dd1 = dx^2+dy^2
-		t1 = conl(a).t
-		d1 = conl(a).d
 		For b = a+1 To nconl-1
-			x3 = conl(b).x1
-			y3 = conl(b).y1
-			x4 = conl(b).x2
-			y4 = conl(b).y2
-			dx = x4-x3
-			dy = y4-y3
+			x3 = conl(b).x1 : y3 = conl(b).y1
+			x4 = conl(b).x2 : y4 = conl(b).y2
+			dx = x4-x3 : dy = y4-y3
 			dd2 = dx^2+dy^2
-			t2 = conl(b).t
-			d2 = conl(b).d
-
-			If cutting (x1,y1,x2,y2,x3,y3,x4,y4) Then
-				If togglecut=1 Then
-					If dd2<=dd1 Then conl(a).s = 0
-					If dd1<=dd2 Then conl(b).s = 0
-				ElseIf togglecut=2 Then
-					conl(a).s = 0
-					conl(b).s = 0
+			If conl(a).c<>conl(b).c Then		' cutting only for opponent, not for own connections
+				If cutting (x1,y1,x2,y2,x3,y3,x4,y4) Then
+					If togglecut=1 Then
+						If dd2<=dd1 Then conl(a).s = 0
+						If dd1<=dd2 Then conl(b).s = 0
+					ElseIf togglecut=2 Then
+						conl(a).s = 0
+						conl(b).s = 0
+					EndIf
 				EndIf
 			EndIf
-
 		Next
 	Next
 End Sub
@@ -1099,7 +1112,7 @@ End Function
 ' calc players territorium
 '
 Sub calcarea ()
-	Dim As Integer x, y, t, d, x2, y2, gef, mx, my, sb, sw
+	Dim As Integer x, y, t, d, x2, y2, gef, mx, my, sb, sw, st
 
 	For y = 0 To BAS-1			' empty board
 		For x = 0 To BAS-1
@@ -1125,12 +1138,18 @@ Sub calcarea ()
 
 	Do
 		gef = 0					' find empty pixel
-		For y = 0 To BAS-1
-			For x = 0 To BAS-1
-				If bb(x,y)=CBOARD Then mx = x : my = y : gef = 1 : Exit For
+		st = 64
+		Do
+			For y = 0 To BAS-1 Step st
+				For x = 0 To BAS-1 Step st
+					If bb(x,y)=CBOARD Then mx = x : my = y : gef = 1 : Exit For
+				Next
+				If gef Then Exit For
 			Next
-			If gef Then Exit For
-		Next
+			If gef Then Exit Do
+			If st=1 Then Exit Do
+			st /= 4
+		Loop
 		If gef=0 Then Exit Do	' exit if whole board is colored
 
 		t = ffr (mx, my, NCOLORS)		' fill that pixel and connected area with neutral color
@@ -1324,7 +1343,7 @@ Function empfangen (ByRef x As Integer, ByRef y As Integer) As Integer
 		t = GetFiles (dateien())
 		If t=0 Then Return 0
 		Open dateien(1) For Input As #1
-		While Not EOF(1)
+		While Not Eof(1)
 			Line Input #1,a
 			If Mid(a,1,7)="message" Then x = Val(Mid(a,9,3)) : y = Val(Mid(a,13,3))
 		Wend
@@ -1369,7 +1388,7 @@ Sub startmenu ()
 		mytextout (400, 20*16, 0, "4) start shared file game as white")
 		mytextout (400, 18*16, 0, "5) start single computer game")
 
-		i = Inkey
+		i = InKey
 		If i="1" Then gametype = 1 : spieler = 1
 		If i="2" Then gametype = 1 : spieler = 2
 		If i="3" Then gametype = 2 : spieler = 1
@@ -1392,7 +1411,7 @@ Sub startmenu ()
 		mytextout (430, 16*16, 0, "7) 17x17 board")
 		mytextout (430, 14*16, 0, "9) 19x19 board")
 
-		i = Inkey
+		i = InKey
 		If i="0" Then BS = 9
 		If i="1" Then BS = 11
 		If i="3" Then BS = 13
@@ -1417,7 +1436,7 @@ Function myinput (ByRef x As Integer, ByRef y As Integer) As Integer
 		mybox (30, 22*16+4, 200, 20*16+4, 0.1, CBOARD)
 		mycolor (stonecolor (stonenr))
 		mytextout (38, 21*16, 0.1, "input x,y: "+s)
-		i = Inkey
+		i = InKey
 		If i=Chr(13) Then Exit Do
 		If i=Chr(8) Then s = Left(s,Len(s)-1) : Continue Do
 		If Asc(i)>=32 And Asc(i)<128 Then s += i
@@ -1569,7 +1588,7 @@ Sub main ()
 		x = (mx-(SCRX-LL)/2)*zoom + (SCRX-LL)/2 + panx
 		y = (my-SCRY/2)*zoom + SCRY/2 + pany
 
-		searchnearest (x, y)		' byref!
+		searchnearest (x, y)		' byref! sets x and y
 
 		If setpossible (x, y)=1 Then
 			If lbuttoncnt=1 Then
@@ -1610,14 +1629,14 @@ Sub main ()
 
 
 		If wantinput Then		' manual input of coordinates of stone to set
-			If myinput (x, y)<>0 Then		' byref!
+			If myinput (x, y)<>0 Then		' byref! sets x and y
 				setstone (x, y)
 			EndIf
 			wantinput = 0
 		EndIf
 
 
-		i = Inkey
+		i = InKey
 		If i=Chr(27) Then Exit Do
 
 		If i="s" Then savestones ()
