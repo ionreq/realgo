@@ -5,9 +5,10 @@
 		LMB	place stone
 		RMB	pan
 		wheel	zoom
-		t		show pixels
+		p		show pixels
 		i		input coordinates to place stone
-		f		show territory
+		t		show territory
+		f		fullscreen/windowed toggle
 		s		save game to file
 		l		load game from file
 		k		kill stone near mouse
@@ -54,6 +55,8 @@
 		vier distanzen d4 ("weak" <2*DD), d3 ("near" <sqr(3)*DD), d2 ("strong" <sqr(2)*DD), d1 ("touching" =DD)
 		für alle vier distanzen einen kreis malen wie für freiheiten makestone(), nichts berechnen
 		d1 und d3 schalter für grouping, territory
+		fullscreen/fenster auswahl
+		mögliche connections in echtzeit anzeigen
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -75,11 +78,13 @@
 			da die immer auftreten wenn von einem stein mehr als eine connection abgehen
 		connections gehen von rand zu rand, nicht von mittelpunkt zu mittelpunkt
 			stein selber cuttet auch, d.h. connections gehen nicht durch steine, d3 ist grenzfall
+		hovering stone: freiheiten, geschlagene gruppen, alles anzeigen (irgendwie eingefärbt zb)
 
 	todo
-		mögliche connections in echtzeit anzeigen (auch gecuttet?)
+		"close" distanz, die einen pixel mehr als d1 hat
+			"touching" dann raus, und "near" ist dann natürlich für die "close" distanz
+		mainloop so machen, dass nicht jedesmal area neu berechnet wird
 		makestone noch für den rand (nix mehr solution of equation, das werden tests)
-		fullscreen/fenster auswahl
 
 '/
 
@@ -94,8 +99,10 @@
 
 Const PI = 6.283185307
 
-Const SCRX = 72*16		' screen size
-Const SCRY = 72*9
+Const WINX = 72*16	' window size
+Const WINY = 72*9
+
+Dim Shared As Integer SCRX, SCRY		' screen size
 
 Const LL = 300		' width of menu viewport, board is SCRX-LL
 
@@ -217,6 +224,7 @@ Const LAREA = 0.6
 Const LNUM = 0.7
 
 Dim Shared As Double panx = -20, pany = -20, zoom = 1			' board panning and zooming
+Dim Shared As Integer togglefullscreen
 
 Const VSCREEN = 0		' viewports
 Const VMENU = 1
@@ -574,8 +582,8 @@ Sub makestone ()
 
 	For t = cnt-1 To 2 Step -1		' sort coos of liberties by their angle
 		For d = 0 To t-1
-			w1 = Atan2(yp(d),xp(d))
-			w2 = Atan2(yp(d+1),xp(d+1))
+			w1 = ATan2(yp(d),xp(d))
+			w2 = ATan2(yp(d+1),xp(d+1))
 			If w1>w2 Then
 				Swap xp(d), xp(d+1)
 				Swap yp(d), yp(d+1)
@@ -594,7 +602,7 @@ Sub makestone ()
 			If qx>=qy Then				' only first octant
 				w = Sqr(qx^2+qy^2)
 
-				t = Int((Atan2(qy,qx)/PI+0.5)*cnt)
+				t = Int((ATan2(qy,qx)/PI+0.5)*cnt)
 
 				c = 0
 
@@ -861,9 +869,9 @@ Sub makeconnections ()
 					EndIf
 				EndIf
 			Next
-			
+
 			Const RA = (2+Sqr(19))/5	' solution of a quadratic eq. for the distance of the two cutting stones
-			
+
 			If x=RR Then
 				newconl (stonecolor(t), 1, t, 0, x, y, 0, y)			' left edge
 			ElseIf x<RA*DD Then
@@ -873,7 +881,7 @@ Sub makeconnections ()
 			ElseIf x<RR+DD Then
 				newconl (stonecolor(t), 4, t, 0, x, y, 0, y)
 			EndIf
-			
+
 			If x=BAS-1-RR Then
 				newconl (stonecolor(t), 1, t, 0, x, y, BAS-1, y)		' right edge
 			ElseIf x>BAS-1-RA*DD Then
@@ -883,7 +891,7 @@ Sub makeconnections ()
 			ElseIf x>BAS-1-(RR+DD) Then
 				newconl (stonecolor(t), 4, t, 0, x, y, BAS-1, y)
 			EndIf
-			
+
 			If y=RR Then
 				newconl (stonecolor(t), 1, t, 0, x, y, x, 0)		' bottom edge
 			ElseIf y<RA*DD Then
@@ -893,7 +901,7 @@ Sub makeconnections ()
 			ElseIf y<RR+DD Then
 				newconl (stonecolor(t), 4, t, 0, x, y, x, 0)
 			EndIf
-			
+
 			If y=BAS-1-RR Then
 				newconl (stonecolor(t), 1, t, 0, x, y, x, BAS-1)		' top edge
 			ElseIf y>BAS-1-RA*DD Then
@@ -1345,7 +1353,7 @@ Function empfangen (ByRef x As Integer, ByRef y As Integer) As Integer
 		t = GetFiles (dateien())
 		If t=0 Then Return 0
 		Open dateien(1) For Input As #1
-		While Not Eof(1)
+		While Not EOF(1)
 			Line Input #1,a
 			If Mid(a,1,7)="message" Then x = Val(Mid(a,9,3)) : y = Val(Mid(a,13,3))
 		Wend
@@ -1495,18 +1503,31 @@ Sub showtexture ()
 End Sub
 
 
-' main
+' open graphics display
 '
-Sub main ()
-	Dim As Integer mx,my,wheel,button, lbuttoncnt, rbuttoncnt
-	Dim As Integer x, y, t, wantinput, oldmx, oldmy, owheel, showtex
-	Dim As String i
+Sub openscreen ()
 	Dim As HWND hwnd
 	Dim As HDC hdc
 	Dim As HGLRC hglrc
 	Dim As HFONT hfont
+	Dim As Integer mode
 
-	ScreenRes SCRX,SCRY,24,,FB.GFX_OPENGL Or FB.GFX_MULTISAMPLE
+	'Screen 0
+	If togglefullscreen Then
+		mode = ScreenList(24)
+		While mode<>0
+			SCRX = HiWord(mode)
+			SCRY = LoWord(mode)
+			mode = ScreenList()
+		Wend
+		'SCRX = 1366
+		'SCRY = 768
+		ScreenRes SCRX,SCRY,24,,FB.GFX_OPENGL Or FB.GFX_MULTISAMPLE Or FB.GFX_FULLSCREEN
+	Else
+		SCRX = WINX
+		SCRY = WINY
+		ScreenRes SCRX,SCRY,24,,FB.GFX_OPENGL Or FB.GFX_MULTISAMPLE
+	EndIf
 
 	ScreenControl (FB.GET_WINDOW_HANDLE, Cast (Integer, hwnd))
 	'MoveWindow (hwnd, 0, 0, SCRX, SCRY, 1)
@@ -1522,6 +1543,18 @@ Sub main ()
 
 	glClearColor (0.5, 0, 0, 1)		' background color
 	glEnable (GL_DEPTH_TEST)
+End Sub
+
+
+' main
+'
+Sub main ()
+	Dim As Integer mx, my, wheel, button, lbuttoncnt, rbuttoncnt
+	Dim As Integer x, y, t, wantinput, oldmx, oldmy, owheel
+	Dim As Integer hovering, showtex
+	Dim As String i
+
+	openscreen ()
 
 	viewport (VSCREEN)
 	startmenu ()
@@ -1592,6 +1625,7 @@ Sub main ()
 
 		searchnearest (x, y)		' byref! sets x and y
 
+		hovering = 0
 		If setpossible (x, y)=1 Then
 			If lbuttoncnt=1 Then
 				If gametype=3 Then
@@ -1603,7 +1637,14 @@ Sub main ()
 					EndIf
 				EndIf
 			Else
-				If wantinput=0 Then drawstone (x, y, stonenr)		' draw hovering stone
+				If wantinput=0 Then
+					drawstone (x, y, stonenr)		' draw hovering stone
+					If showhov Then
+						stones(stonenr).x = x
+						stones(stonenr).y = y
+						hovering = 1
+					EndIf
+				EndIf
 			EndIf
 		EndIf
 
@@ -1611,9 +1652,15 @@ Sub main ()
 		If togglecut>0 Then cutconnections ()
 		If showcon Then drawconnections ()
 
+		If hovering=1 Then
+			stones(stonenr).x = 0
+			stones(stonenr).y = 0
+			makeconnections ()
+			If togglecut>0 Then cutconnections ()
+		EndIf
+
 		checklibs ()
 		grouplibs ()
-
 		killstones ()
 
 		If shownum Then drawlibs ()
@@ -1649,9 +1696,14 @@ Sub main ()
 			If t>0 Then killstone (t) : redrawboard ()
 		EndIf
 		If i="i" Then wantinput = 1
-		If i="t" Then showtex Xor= 1
+		If i="p" Then showtex Xor= 1
 
-		If i="f" Then showarea Xor=1
+		If i="f" Then
+			togglefullscreen Xor= 1
+			openscreen ()
+		EndIf
+
+		If i="t" Then showarea Xor=1
 
 		If i="1" Then showinf Xor= 1
 		If i="2" Then showlib Xor= 1
