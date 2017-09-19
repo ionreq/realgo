@@ -419,14 +419,16 @@ Function ffr (x As Integer, y As Integer, c As Integer) As Integer
 	t = 0
 	Do
 		If queueout (x, y)=0 Then Exit Do			 ' byref! exit when empty queue
-		If x>=0 And x<BAS And y>=0 And y<BAS And bb(x,y)<>c Then
-			If bb(x,y)=CBLACK Then t Or= 1 : Continue Do
-			If bb(x,y)=CWHITE Then t Or= 2 : Continue Do
-			bb(x,y) = c
-			queuein (x+1, y)
-			queuein (x, y+1)
-			queuein (x-1, y)
-			queuein (x, y-1)
+		If x>=0 And x<BAS And y>=0 And y<BAS Then
+			If bb(x,y)<>c Then
+				If bb(x,y)=CBLACK Then t Or= 1 : Continue Do
+				If bb(x,y)=CWHITE Then t Or= 2 : Continue Do
+				bb(x,y) = c
+				queuein (x+1, y)
+				queuein (x, y+1)
+				queuein (x-1, y)
+				queuein (x, y-1)
+			EndIf
 		EndIf
 	Loop
 	Return t
