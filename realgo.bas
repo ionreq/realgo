@@ -57,6 +57,9 @@
 		d1 und d3 schalter für grouping, territory
 		fullscreen/fenster auswahl
 		mögliche connections in echtzeit anzeigen
+		"close" distanz, die einen pixel mehr als stone circumference hat
+			"touching" dann raus, und "near" ist dann natürlich für die "close" distanz
+		geheime taste zum anzeigen von ar()
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -81,8 +84,6 @@
 		hovering stone: freiheiten, geschlagene gruppen, alles anzeigen (irgendwie eingefärbt zb)
 
 	todo
-		"close" distanz, die einen pixel mehr als d1 hat
-			"touching" dann raus, und "near" ist dann natürlich für die "close" distanz
 		mainloop so machen, dass nicht jedesmal area neu berechnet wird
 		makestone noch für den rand (nix mehr solution of equation, das werden tests)
 
@@ -119,7 +120,7 @@ Dim Shared As Integer BAS		' board array size
 Const SAS = 2*(2*DD+3)+1		' stone array size
 Const MAXCNT = RR*13				' maximum expected number of liberties for that radius (about 2*RR*PI)
 
-Dim Shared As UByte ar(SAS,SAS), sa(2*RR+1,2*RR+1)		' stone array
+Dim Shared As UByte ar(SAS,SAS), sa(2*(RR+1)+1,2*(RR+1)+1)		' stone array (with influence and without)
 
 'color numbers
 Enum colors
@@ -130,8 +131,10 @@ CWHITE			' white stone
 CBACKGROUND		' the background
 CSTONE			' stone
 CCIRC				' circumference
-CINF				' influence area (gray) (<d1)
-CLIB				' liberties circle (red) (=d1)
+CCLOSECIRC		' close
+CINF				' influence area (gray)
+CLIB				' liberties circle (red) (<=d1)
+CCLOSE			' close (<=d1)
 CLD2				' <d2
 CED2				' =d2
 CLD3				' <d3
@@ -149,15 +152,21 @@ RGB(255,255,255), _
 RGB(128,0,0), _
 RGB(0,0,0), _
 RGB(100,100,100), _
+RGB(200,200,0), _
 RGB(128,128,128), _
 RGB(200,0,0), _
-RGB(0,0,0), _
-RGB(0,0,0), _
-RGB(0,0,0), _
-RGB(0,0,0), _
-RGB(0,0,0), _
-RGB(0,0,0) _
+RGB(200,200,0), _
+RGB(0,200,0), _
+RGB(0,100,0), _
+RGB(200,0,0), _
+RGB(100,0,0), _
+RGB(0,200,200), _
+RGB(0,100,100) _
 }
+
+Const FCOLLISION = 1		' for testcircle()
+Const FTOUCHING = 2
+Const FCLOSE = 4
 
 Type stone
 	As Integer x, y		' 0=not there, positions start at 1*RR
@@ -192,7 +201,7 @@ Dim Shared As queue qu
 Dim Shared As Integer showinf, showlib, showcon, shownum, showhov		' toggle switches for display
 Dim Shared As Integer showarea
 
-Dim Shared As Integer togglecut, togglegrp, togglearea		' toggle switches for variations
+Dim Shared As Integer togglecut, togglegrp, toggleter		' toggle switches for variations
 
 Dim Shared As Integer lastmovex, lastmovey	' coos of last stone set
 
@@ -222,6 +231,7 @@ Const LSTONE = 0.4
 Const LCON = 0.5
 Const LAREA = 0.6
 Const LNUM = 0.7
+Const LEDGE = 0.8
 
 Dim Shared As Double panx = -20, pany = -20, zoom = 1			' board panning and zooming
 Dim Shared As Integer togglefullscreen
@@ -482,10 +492,10 @@ Sub drawboard ()
 
 	mybox (0, 0, BAS, BAS, LBOARD, CBOARD)
 
-	mybox (-DD, -DD, 0, BAS+DD, 1, CBACKGROUND)
-	mybox (BAS, -DD, BAS+DD, BAS+DD, 1, CBACKGROUND)
-	mybox (0, -DD, BAS, 0, 1, CBACKGROUND)
-	mybox (0, BAS, BAS, BAS+DD, 1, CBACKGROUND)
+	mybox (-DD, -DD, 0, BAS+DD, LEDGE, CBACKGROUND)
+	mybox (BAS, -DD, BAS+DD, BAS+DD, LEDGE, CBACKGROUND)
+	mybox (0, -DD, BAS, 0, LEDGE, CBACKGROUND)
+	mybox (0, BAS, BAS, BAS+DD, LEDGE, CBACKGROUND)
 
 	For t = 1 To BS
 		mybox (t*DD-RR, RR, t*DD-RR+1, RR+(BS-1)*DD+1, LBOARDLINES, CBOARDLINES)
@@ -511,20 +521,24 @@ End Function
 ' are two circles touching or overlapping
 '
 Function testcircle (mx As Integer, my As Integer, mx2 As Integer, my2 As Integer) As Integer
-	Dim As Integer x, y, dx, dy, t, nx, ny
+	Dim As Integer x, y, dx, dy, t, nx, ny, a, b, d
 
 	dx = mx2-mx
 	dy = my2-my
-	If Sqr(dx^2+dy^2)<2*RR-2 Then Return 3
-	If Sqr(dx^2+dy^2)>2*RR+2 Then Return 0
+	d = dx^2+dy^2
+	If d<(2*RR-4)^2 Then Return FCOLLISION
+	If d>(2*RR+4)^2 Then Return 0
 	t = 0
-	For y = -RR To RR
-		For x = -RR To RR
-			nx = RR+dx+x
-			ny = RR+dy+y
-			If nx>=0 And nx<2*RR+1 And ny>=0 And ny<2*RR+1 Then
-				If sa(RR+x,RR+y)=CSTONE And sa(nx,ny)=CCIRC Then t Or= 2
-				If sa(RR+x,RR+y)=CCIRC And sa(nx,ny)=CCIRC Then t Or= 1
+	For y = -RR-1 To RR+1
+		For x = -RR-1 To RR+1
+			nx = RR+1+dx+x
+			ny = RR+1+dy+y
+			If nx>=0 And nx<2*(RR+1)+1 And ny>=0 And ny<2*(RR+1)+1 Then
+				a = sa(RR+1+x,RR+1+y)
+				b = sa(nx,ny)
+				If a=CSTONE And (b=CSTONE Or b=CCIRC) Then Return FCOLLISION
+				If a=CCIRC And b=CCIRC Then t Or= FTOUCHING
+				If a=CCIRC And (b=CCIRC Or b=CCLOSECIRC) Then t Or= FCLOSE
 			EndIf
 		Next
 	Next
@@ -545,14 +559,20 @@ Sub makestone ()
 
 	For x = -RR To RR						' stone with circumference
 		y = Int(Sqr(RR^2-x^2)+0.5)
-		For t = RR-y To RR+y
-			If sa(RR+x,t)=0 Then sa(RR+x,t) = CSTONE
-			If sa(t,RR+x)=0 Then sa(t,RR+x) = CSTONE
+		For t = -y To y
+			If sa(RR+1+x,RR+1+t)=0 Then sa(RR+1+x,RR+1+t) = CSTONE
+			If sa(RR+1+t,RR+1+x)=0 Then sa(RR+1+t,RR+1+x) = CSTONE
 		Next
-		sa(RR+x,RR+y) = CCIRC
-		sa(RR+x,RR-y) = CCIRC
-		sa(RR+y,RR+x) = CCIRC
-		sa(RR-y,RR+x) = CCIRC
+		sa(RR+1+x,RR+1+y) = CCIRC
+		sa(RR+1+x,RR+1-y) = CCIRC
+		sa(RR+1+y,RR+1+x) = CCIRC
+		sa(RR+1-y,RR+1+x) = CCIRC
+	Next
+
+	For x = -RR-1 To RR+1		' draw close circumference (stone circumference +1 pixel)
+		For y = -RR-1 To RR+1
+			If sa(RR+1+x,RR+1+y)=0 And x^2+y^2<=(RR+1.5)^2 Then sa(RR+1+x,RR+1+y) = CCLOSECIRC
+		Next
 	Next
 
 	For x = -(2*RR+2) To 2*RR+2		' influence and liberty curve via collision with second stone
@@ -560,22 +580,24 @@ Sub makestone ()
 			nx = mx+x
 			ny = my+y
 			t = testcircle (mx,my,nx,ny)
-			If t=1 And Not (x=0 And y=0) Then
+			If (t And FTOUCHING) And Not (x=0 And y=0) Then
 				ar(nx,ny) = CLIB
 				xp(cnt) = x : yp(cnt) = y
 				cnt+=1
-			ElseIf t>=2 Then
+			ElseIf (t And FCOLLISION) Then
 				ar(nx,ny) = CINF
+			ElseIf (t And FCLOSE) Then
+				ar(nx,ny) = CCLOSE
 			EndIf
 		Next
 	Next
 
 	maxlib = cnt
 
-	For y = -RR To RR
-		For x = -RR To RR
-			If sa(RR+x,RR+y)>0 Then
-				ar(mx+x,my+y) = sa(RR+x,RR+y)
+	For y = -RR-1 To RR+1
+		For x = -RR-1 To RR+1
+			If sa(RR+1+x,RR+1+y)>0 Then
+				ar(mx+x,my+y) = sa(RR+1+x,RR+1+y)
 			EndIf
 		Next
 	Next
@@ -616,16 +638,16 @@ Sub makestone ()
 					ny = my+qy
 					Const U = 6
 					For t1 = U To -U Step -1
-						If testcircle (mx,my,nx-xp(t-cnt/8-t1),ny-yp(t-cnt/8-t1))>1 Then t1+=1 : Exit For
+						If testcircle (mx,my,nx-xp(t-cnt/8-t1),ny-yp(t-cnt/8-t1))=FCOLLISION Then t1+=1 : Exit For
 					Next
 					For t2 = U To -U Step -1
-						If testcircle (mx,my,nx-xp(t+cnt/8+t2),ny-yp(t+cnt/8+t2))>1 Then t2+=1 : Exit For
+						If testcircle (mx,my,nx-xp(t+cnt/8+t2),ny-yp(t+cnt/8+t2))=FCOLLISION Then t2+=1 : Exit For
 					Next
 					For t3 = U To -U Step -1
-						If testcircle (nx,ny,mx+xp(t+cnt/8+t3),my+yp(t+cnt/8+t3))>1 Then t3+=1 : Exit For
+						If testcircle (nx,ny,mx+xp(t+cnt/8+t3),my+yp(t+cnt/8+t3))=FCOLLISION Then t3+=1 : Exit For
 					Next
 					For t4 = U To -U Step -1
-						If testcircle (nx,ny,mx+xp(t-cnt/8-t4),my+yp(t-cnt/8-t4))>1 Then t4+=1 : Exit For
+						If testcircle (nx,ny,mx+xp(t-cnt/8-t4),my+yp(t-cnt/8-t4))=FCOLLISION Then t4+=1 : Exit For
 					Next
 					d0 = dist(mx,my,nx,ny)
 					d1 = dist(nx-xp(t-cnt/8-t1),ny-yp(t-cnt/8-t1),nx-xp(t+cnt/8+t2),ny-yp(t+cnt/8+t2))
@@ -646,24 +668,24 @@ Sub makestone ()
 					ny = my+qy
 					Const U = 10
 					For t1 = U To -U Step -1
-						If testcircle (mx,my,nx-xp(t-cnt/12-t1),ny-yp(t-cnt/12-t1))>1 Then t1+=1 : Exit For
+						If testcircle (mx,my,nx-xp(t-cnt/12-t1),ny-yp(t-cnt/12-t1))=FCOLLISION Then t1+=1 : Exit For
 					Next
 					For t2 = U To -U Step -1
-						If testcircle (mx,my,nx-xp(t+cnt/12+t2),ny-yp(t+cnt/12+t2))>1 Then t2+=1 : Exit For
+						If testcircle (mx,my,nx-xp(t+cnt/12+t2),ny-yp(t+cnt/12+t2))=FCOLLISION Then t2+=1 : Exit For
 					Next
 					For t3 = U To -U Step -1
-						If testcircle (nx,ny,mx+xp(t+cnt/12+t3),my+yp(t+cnt/12+t3))>1 Then t3+=1 : Exit For
+						If testcircle (nx,ny,mx+xp(t+cnt/12+t3),my+yp(t+cnt/12+t3))=FCOLLISION Then t3+=1 : Exit For
 					Next
 					For t4 = U To -U Step -1
-						If testcircle (nx,ny,mx+xp(t-cnt/12-t4),my+yp(t-cnt/12-t4))>1 Then t4+=1 : Exit For
+						If testcircle (nx,ny,mx+xp(t-cnt/12-t4),my+yp(t-cnt/12-t4))=FCOLLISION Then t4+=1 : Exit For
 					Next
 					d1 = testcircle(nx-xp(t-cnt/12-t1),ny-yp(t-cnt/12-t1),nx-xp(t+cnt/12+t2),ny-yp(t+cnt/12+t2))
 					d2 = testcircle(mx+xp(t-cnt/12-t4),my+yp(t-cnt/12-t4),mx+xp(t+cnt/12+t3),my+yp(t+cnt/12+t3))
 					d3 = testcircle(nx-xp(t-cnt/12-t1),ny-yp(t-cnt/12-t1),mx+xp(t-cnt/12-t4),my+yp(t-cnt/12-t4))
 					d4 = testcircle(mx+xp(t+cnt/12+t3),my+yp(t+cnt/12+t3),nx-xp(t+cnt/12+t2),ny-yp(t+cnt/12+t2))
 					c = CLD3
-					If d1>1 Or d2>1 Or d3>1 Or d4>1 Then c = CLD4
-					If d1=1 Or d2=1 Or d3=1 Or d4=1 Then c = CED3
+					If (d1 And FCOLLISION) Or (d2 And FCOLLISION) Or (d3 And FCOLLISION) Or (d4 And FCOLLISION) Then c=CLD4
+					If (d1 And FCLOSE) Or (d2 And FCLOSE) Or (d3 And FCLOSE) Or (d4 And FCLOSE) Then c=CED3
 
 				ElseIf w<2*2*RR-3 Then
 
@@ -677,8 +699,7 @@ Sub makestone ()
 					For a = -3 To 3
 						d Or= testcircle (nx,ny, mx+xp(t+a), my+yp(t+a))
 					Next
-					If d=1 Then c = CED4
-					If d=3 Then c = CLD4
+					If (d And FCOLLISION) Then c = CLD4 Else If (d And FTOUCHING) Then c = CED4
 
 				EndIf
 
@@ -752,6 +773,7 @@ Sub copystone (mx As Integer, my As Integer, sn As Integer)
 				px = mx+x
 				If px>=0 And px<BAS Then
 					c = ar((SAS-1)/2+x,(SAS-1)/2+y)
+					If c=CCLOSECIRC Then c = CINF
 					If c=CSTONE Or c=CCIRC Or c=CINF Or c=CLIB Then
 						d = ba(px,py)
 						If Not ((c=CLIB Or c=CINF) And Not (d=CBOARD Or d=CBOARDLINES Or d=CLIB)) Then
@@ -855,7 +877,7 @@ Sub makeconnections ()
 						If dx^2+dy^2<(2*DD+3)^2 Then
 							c = ar((SAS-1)/2+dx,(SAS-1)/2+dy)
 							If c>0 Then
-								If c=CLIB Then
+								If c<=CCLOSE Then
 									newconl (stonecolor(t), 1, t, d, x, y, x2, y2)
 								ElseIf c<CED2 Then
 									newconl (stonecolor(t), 2, t, d, x, y, x2, y2)
@@ -1131,7 +1153,7 @@ Sub calcarea ()
 	Next
 
 	For t = 0 To nconl-1		' draw connection lines
-		If conl(t).s>0 And conl(t).s<=togglearea+1 Then
+		If conl(t).s>0 And conl(t).s<=toggleter+1 Then
 			x = conl(t).x1
 			y = conl(t).y1
 			x2 = conl(t).x2
@@ -1258,7 +1280,7 @@ Sub drawmenu ()
 
 	ts(0) = "off" : ts(1) = "on"
 	tc(0) = "none" : tc(1) = "longer" : tc(2) = "both"
-	tt(0) = "touching" : tt(1) = "strong" : tt(2) = "near" : tt(3) = "weak"
+	tt(0) = "close" : tt(1) = "strong" : tt(2) = "near" : tt(3) = "weak"
 
 	mycolor (CBOARD)
 
@@ -1270,7 +1292,7 @@ Sub drawmenu ()
 
 	mytextout (30, 27*16, 0, "8) connection cutting: "+tc(togglecut))
 	mytextout (30, 26*16, 0, "9) connection groups: "+tt(togglegrp))
-	mytextout (30, 25*16, 0, "0) connection area: "+tt(togglearea))
+	mytextout (30, 25*16, 0, "0) connection territory: "+tt(toggleter))
 
 	mytextout (30, 23*16, 0, "last move: "+Str(lastmovex)+" "+Str(lastmovey))
 End Sub
@@ -1551,7 +1573,7 @@ End Sub
 Sub main ()
 	Dim As Integer mx, my, wheel, button, lbuttoncnt, rbuttoncnt
 	Dim As Integer x, y, t, wantinput, oldmx, oldmy, owheel
-	Dim As Integer hovering, showtex
+	Dim As Integer hovering, showtex, showar
 	Dim As String i
 
 	openscreen ()
@@ -1581,7 +1603,7 @@ Sub main ()
 	showarea = 0
 	togglecut = 1
 	togglegrp = 3
-	togglearea = 3
+	toggleter = 3
 
 	initboard ()
 	makestone ()
@@ -1702,6 +1724,15 @@ Sub main ()
 			togglefullscreen Xor= 1
 			openscreen ()
 		EndIf
+		
+		If i="a" Then showar Xor= 1
+		If showar Then
+			For x = 0 To SAS-1
+				For y = 0 To SAS-1
+					mybox (x*4, y*4, x*4+4, y*4+4, 1, ar(x,y))
+				Next
+			Next
+		EndIf
 
 		If i="t" Then showarea Xor=1
 
@@ -1713,7 +1744,7 @@ Sub main ()
 
 		If i="8" Then togglecut += 1 : togglecut Mod= 3
 		If i="9" Then togglegrp += 1 : togglegrp Mod= 4
-		If i="0" Then togglearea += 1 : togglearea Mod= 4
+		If i="0" Then toggleter += 1 : toggleter Mod= 4
 
 		Flip
 	Loop
