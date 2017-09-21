@@ -60,6 +60,7 @@
 		"close" distanz, die einen pixel mehr als stone circumference hat
 			"touching" dann raus, und "near" ist dann natürlich für die "close" distanz
 		geheime taste zum anzeigen von ar()
+		mainloop so, dass area nicht jedesmal neu berechnet wird
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -84,7 +85,7 @@
 		hovering stone: freiheiten, geschlagene gruppen, alles anzeigen (irgendwie eingefärbt zb)
 
 	todo
-		mainloop so machen, dass nicht jedesmal area neu berechnet wird
+		area boxen mit vertexarray?
 		makestone noch für den rand (nix mehr solution of equation, das werden tests)
 
 '/
@@ -100,6 +101,8 @@
 
 Const PI = 6.283185307
 
+'Const WINX = 80*16	' window size
+'Const WINY = 80*9
 Const WINX = 72*16	' window size
 Const WINY = 72*9
 
@@ -240,6 +243,14 @@ Const VSCREEN = 0		' viewports
 Const VMENU = 1
 Const VBOARD = 2
 
+Dim Shared As Integer scorew, scoreb		' territory counting
+
+Dim Shared As UByte Ptr texdat		' texture display
+Dim Shared As Integer texname
+
+Dim Shared As Integer listready		' opengl calllist for area display
+Dim Shared As Integer boardredrawn
+
 
 Declare Sub main
 main
@@ -249,7 +260,7 @@ End
 ' print a text at a screen position using opengl calllists
 '
 Sub mytextout (x As Double, y As Double, z As Double, s As String)
-	glRasterPos3d (x, y, z)
+	glRasterPos3f (x, y, z)
 	glListBase (1000)
 	glCallLists (Len(s), GL_UNSIGNED_BYTE, StrPtr(s))
 End Sub
@@ -258,7 +269,7 @@ End Sub
 ' glcolor translation of rgb values
 '
 Sub mycolor (c As Integer)
-	glColor3d ( ((CUInt(col(c)) Shr 16) And 255)/255, ((CUInt(col(c)) Shr 8) And 255)/255, ((CUInt(col(c)) Shr 0) And 255)/255 )
+	glColor3f ( ((CUInt(col(c)) Shr 16) And 255)/255, ((CUInt(col(c)) Shr 8) And 255)/255, ((CUInt(col(c)) Shr 0) And 255)/255 )
 End Sub
 
 
@@ -273,7 +284,7 @@ Sub mycircle (x As Double, y As Double, z As Double, r As Double)
 
 	glBegin (GL_TRIANGLE_FAN)
 	For t = 0 To n-1
-		glVertex3d (x+r*Cos(t*PI/n)+0.5, y+r*Sin(t*PI/n)+0.5, z)
+		glVertex3f (x+r*Cos(t*PI/n)+0.5, y+r*Sin(t*PI/n)+0.5, z)
 	Next
 	glEnd ()
 End Sub
@@ -301,57 +312,57 @@ Sub myline (x1 As Double, y1 As Double, x2 As Double, y2 As Double, LW As Double
 	x1 += 0.5 : y1 += 0.5
 	x2 += 0.5 : y2 += 0.5
 
-	If lt=2 Then
+	If lt=2 Then		' strong double line
 
 		Const U = 5
 		nx1 = x1 - fx*U : ny1 = y1 - fy*U
 		nx2 = x2 - fx*U : ny2 = y2 - fy*U
 		glBegin (GL_QUADS)
-		glVertex3d (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
-		glVertex3d (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
-		glVertex3d (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
-		glVertex3d (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
+		glVertex3f (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
+		glVertex3f (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
+		glVertex3f (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
+		glVertex3f (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
 		glEnd ()
 		nx1 = x1 + fx*U : ny1 = y1 + fy*U
 		nx2 = x2 + fx*U : ny2 = y2 + fy*U
 		glBegin (GL_QUADS)
-		glVertex3d (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
-		glVertex3d (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
-		glVertex3d (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
-		glVertex3d (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
+		glVertex3f (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
+		glVertex3f (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
+		glVertex3f (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
+		glVertex3f (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
 		glEnd ()
 
-	ElseIf lt=1 Then
+	ElseIf lt=1 Then		' close small gray rectangle
 
 		nx1 = x1 + (RR-0.5)*ex : ny1 = y1 + (RR-0.5)*ey
 		nx2 = x1 + (RR+0.5)*ex : ny2 = y1 + (RR+0.5)*ey
 		glBegin (GL_QUADS)
-		glVertex3d (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
-		glVertex3d (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
-		glVertex3d (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
-		glVertex3d (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
+		glVertex3f (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
+		glVertex3f (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
+		glVertex3f (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
+		glVertex3f (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
 		glEnd ()
 
-	ElseIf lt=4 Then
+	ElseIf lt=4 Then		' weak dashed line
 
 		For t = 0 To Int(d) Step 6
 			nx1 = x1 + t*ex : ny1 = y1 + t*ey
 			nx2 = x1 + (t+1)*ex : ny2 = y1 + (t+1)*ey
 
 			glBegin (GL_QUADS)
-			glVertex3d (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
-			glVertex3d (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
-			glVertex3d (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
-			glVertex3d (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
+			glVertex3f (nx1-LW*ex-LW*fx, ny1-LW*ey-LW*fy, LCON)
+			glVertex3f (nx2+LW*ex-LW*fx, ny2+LW*ey-LW*fy, LCON)
+			glVertex3f (nx2+LW*ex+LW*fx, ny2+LW*ey+LW*fy, LCON)
+			glVertex3f (nx1-LW*ex+LW*fx, ny1-LW*ey+LW*fy, LCON)
 			glEnd ()
 		Next
 
-	Else
+	Else		' near normal line
 		glBegin (GL_QUADS)
-		glVertex3d (x1-LW*ex-LW*fx, y1-LW*ey-LW*fy, LCON)
-		glVertex3d (x2+LW*ex-LW*fx, y2+LW*ey-LW*fy, LCON)
-		glVertex3d (x2+LW*ex+LW*fx, y2+LW*ey+LW*fy, LCON)
-		glVertex3d (x1-LW*ex+LW*fx, y1-LW*ey+LW*fy, LCON)
+		glVertex3f (x1-LW*ex-LW*fx, y1-LW*ey-LW*fy, LCON)
+		glVertex3f (x2+LW*ex-LW*fx, y2+LW*ey-LW*fy, LCON)
+		glVertex3f (x2+LW*ex+LW*fx, y2+LW*ey+LW*fy, LCON)
+		glVertex3f (x1-LW*ex+LW*fx, y1-LW*ey+LW*fy, LCON)
 		glEnd ()
 	EndIf
 
@@ -363,10 +374,10 @@ End Sub
 Sub mybox (x1 As Double, y1 As Double, x2 As Double, y2 As Double, z As Double, c As Integer)
 	mycolor (c)
 	glBegin (GL_QUADS)
-	glVertex3d (x1, y1, z)
-	glVertex3d (x2, y1, z)
-	glVertex3d (x2, y2, z)
-	glVertex3d (x1, y2, z)
+	glVertex3f (x1, y1, z)
+	glVertex3f (x2, y1, z)
+	glVertex3f (x2, y2, z)
+	glVertex3f (x1, y2, z)
 	glEnd ()
 End Sub
 
@@ -684,8 +695,8 @@ Sub makestone ()
 					d3 = testcircle(nx-xp(t-cnt/12-t1),ny-yp(t-cnt/12-t1),mx+xp(t-cnt/12-t4),my+yp(t-cnt/12-t4))
 					d4 = testcircle(mx+xp(t+cnt/12+t3),my+yp(t+cnt/12+t3),nx-xp(t+cnt/12+t2),ny-yp(t+cnt/12+t2))
 					c = CLD3
-					If (d1 And FCOLLISION) Or (d2 And FCOLLISION) Or (d3 And FCOLLISION) Or (d4 And FCOLLISION) Then c=CLD4
-					If (d1 And FCLOSE) Or (d2 And FCLOSE) Or (d3 And FCLOSE) Or (d4 And FCLOSE) Then c=CED3
+					If (d1 And FCOLLISION) Or (d2 And FCOLLISION) Or (d3 And FCOLLISION) Or (d4 And FCOLLISION) Then c = CLD4
+					If (d1 And FCLOSE) Or (d2 And FCLOSE) Or (d3 And FCLOSE) Or (d4 And FCLOSE) Then c = CED3
 
 				ElseIf w<2*2*RR-3 Then
 
@@ -785,6 +796,7 @@ Sub copystone (mx As Integer, my As Integer, sn As Integer)
 			Next
 		EndIf
 	Next
+	boardredrawn = 1
 End Sub
 
 
@@ -799,6 +811,7 @@ Sub redrawboard ()
 		y = stones(t).y
 		If x>0 Then copystone (x, y, t)
 	Next
+	boardredrawn = 1
 End Sub
 
 
@@ -1098,15 +1111,15 @@ End Sub
 
 ' remove stones with 0 group libs, redraw board if necessary
 '
-Sub killstones ()
+Function killstones () As Integer
 	Dim As Integer t, gef
 
 	gef = 0
 	For t = 0 To MAXSTONES-1
 		If stones(t).x>0 And stones(t).f=0 Then killstone (t) : gef = 1
 	Next
-	If gef Then redrawboard ()
-End Sub
+	Return gef
+End Function
 
 
 ' search nearest position to set a stone
@@ -1129,22 +1142,10 @@ Sub searchnearest (ByRef mx As Integer, ByRef my As Integer)
 End Sub
 
 
-' return a nicely formatted floating point number string
-'
-Function myformat (n As Double) As String
-	Dim As String s, t
-	s = Str(Int(n))
-	s = Space(3-Len(s))+s
-	t = Str(Int(n*1000)-Int(n)*1000)
-	t = String(3-Len(t),"0")+t
-	Return s+"."+t
-End Function
-
-
-' calc players territorium
+' calc players territory
 '
 Sub calcarea ()
-	Dim As Integer x, y, t, d, x2, y2, gef, mx, my, sb, sw, st
+	Dim As Integer x, y, t, x2, y2, gef, mx, my, st
 
 	For y = 0 To BAS-1			' empty board
 		For x = 0 To BAS-1
@@ -1201,27 +1202,62 @@ Sub calcarea ()
 		Next
 	Loop
 
+	scoreb = 0
+	scorew = 0
 	For y = 0 To BAS-1		' count pixels
 		For x = 0 To BAS-1
-			If bb(x,y)=CBLACK Then sb += 1
-			If bb(x,y)=CWHITE Then sw += 1
+			If bb(x,y)=CBLACK Then scoreb += 1
+			If bb(x,y)=CWHITE Then scorew += 1
 		Next
 	Next
+	listready = 0
+	boardredrawn = 0
+End Sub
+
+
+' return a nicely formatted floating point number string
+'
+Function myformat (n As Double) As String
+	Dim As String s, t
+	s = Str(Int(n))
+	s = Space(3-Len(s))+s
+	t = Str(Int(n*1000)-Int(n)*1000)
+	t = String(3-Len(t),"0")+t
+	Return s+"."+t
+End Function
+
+
+' draw territory on board and show numbers
+'
+Sub drawarea ()
+	Dim As Integer x, y, t
 
 	viewport (VMENU)
 	mybox (20, 36*16+4, 200, 39*16+4, 0.1, CBOARD)
-	mycolor (CBLACK) : mytextout (30, 38*16, 0.2, "b "+myformat(sb/(DD^2)))
-	mycolor (CWHITE) : mytextout (30, 37*16, 0.2, "w "+myformat(sw/(DD^2)))
+	mycolor (CBLACK) : mytextout (30, 38*16, 0.2, "b "+myformat(scoreb/(DD^2)))
+	mycolor (CWHITE) : mytextout (30, 37*16, 0.2, "w "+myformat(scorew/(DD^2)))
 
 	viewport (VBOARD)
-	For y = 0 To BAS-1			' draw area colors on board
-		For x = 0 To BAS-1
-			If (x+y) Mod 2=0 Then
-				t = bb(x,y)
-				If t<>CINF Then mybox (x, y, x+1, y+1, LAREA, t)
-			EndIf
+	If listready=0 Then
+		glNewList (1, GL_COMPILE_AND_EXECUTE)
+		'glBegin (GL_POINTS)
+		Const U = 1
+		For y = 0 To BAS-1 Step U			' draw area colors on board
+			For x = 0 To BAS-1 Step U
+				'If x/U Mod 2=0 And y/U Mod 2=0 Then
+				If (x/U+y/U) Mod 2=0 Then
+					t = bb(x,y)
+					If t<>CINF Then mybox (x, y, x+U, y+U, LAREA, t)
+					'If t<>CINF Then mycolor (t) : glVertex3f (x+0.5, y+0.5, LAREA)
+				EndIf
+			Next
 		Next
-	Next
+		'glEnd ()
+		glEndList ()
+		listready = 1
+	Else
+		glCallList (1)
+	EndIf
 End Sub
 
 
@@ -1485,10 +1521,6 @@ End Function
 
 ' show board pixels
 '
-
-Dim Shared As UByte Ptr texdat
-Dim Shared As Integer texname
-
 Sub showtexture ()
 	Dim As UByte Ptr a
 	Dim As Integer x, y, c
@@ -1552,7 +1584,12 @@ Sub openscreen ()
 	EndIf
 
 	ScreenControl (FB.GET_WINDOW_HANDLE, Cast (Integer, hwnd))
-	'MoveWindow (hwnd, 0, 0, SCRX, SCRY, 1)
+	If togglefullscreen=0 Then
+		'MoveWindow (hwnd, 0, 0, SCRX, SCRY, 1)
+		'SetForegroundWindow (hwnd)
+		'SetActiveWindow (hwnd)
+		SetWindowPos (hwnd, HWND_TOPMOST, 0, 0, SCRX, SCRY, SWP_NOSIZE Or SWP_SHOWWINDOW)
+	EndIf
 	hdc = GetDC (hwnd)
 	hglrc = wglCreateContext (hdc)
 	wglMakeCurrent (hdc, hglrc)
@@ -1615,19 +1652,6 @@ Sub main ()
 	glBindTexture (GL_TEXTURE_2D, texname)
 
 	Do
-		glClear (GL_COLOR_BUFFER_BIT Or GL_DEPTH_BUFFER_BIT)
-
-		viewport (VMENU)
-		drawmenu ()
-
-		viewport (VBOARD)
-		If showtex Then
-			showtexture ()
-		Else
-			drawboard ()
-			drawstones ()
-		EndIf
-
 		oldmx = mx : oldmy = my : owheel = wheel
 		GetMouse mx,my,wheel,button
 		mx = mx-LL
@@ -1647,7 +1671,6 @@ Sub main ()
 
 		searchnearest (x, y)		' byref! sets x and y
 
-		hovering = 0
 		If setpossible (x, y)=1 Then
 			If lbuttoncnt=1 Then
 				If gametype=3 Then
@@ -1658,14 +1681,83 @@ Sub main ()
 						senden (x, y)
 					EndIf
 				EndIf
-			Else
-				If wantinput=0 Then
-					drawstone (x, y, stonenr)		' draw hovering stone
-					If showhov Then
-						stones(stonenr).x = x
-						stones(stonenr).y = y
-						hovering = 1
-					EndIf
+			EndIf
+		EndIf
+
+		If gametype=1 Or gametype=2 Then
+			If spieler=1 And stonenr Mod 2=0 Or spieler=2 And stonenr Mod 2=1 Then
+				If empfangen (x, y)=1 Then
+					setstone (x, y)
+				EndIf
+			EndIf
+		EndIf
+
+		If wantinput Then		' manual input of coordinates of stone to set
+			If myinput (x, y)<>0 Then		' byref! sets x and y
+				setstone (x, y)
+			EndIf
+			wantinput = 0
+		EndIf
+
+
+		i = InKey
+		If i=Chr(27) Then Exit Do
+
+		If i="s" Then savestones ()
+		If i="l" Then loadstones () : redrawboard ()
+
+		If i="m" Then stonenr += 1
+
+		If i="k" Then
+			t = findneareststone (x, y)
+			If t>0 Then killstone (t) : redrawboard ()
+		EndIf
+
+		If i="i" Then wantinput = 1
+
+		If i="p" Then showtex Xor= 1
+
+		If i="f" Then
+			togglefullscreen Xor= 1
+			openscreen ()
+		EndIf
+
+		If i="a" Then showar Xor= 1
+
+		If i="t" Then showarea Xor= 1
+
+		If i="1" Then showinf Xor= 1
+		If i="2" Then showlib Xor= 1
+		If i="3" Then shownum Xor= 1
+		If i="4" Then showcon Xor= 1
+		If i="5" Then showhov Xor= 1
+
+		If i="8" Then togglecut += 1 : togglecut Mod= 3 : boardredrawn = 1
+		If i="9" Then togglegrp += 1 : togglegrp Mod= 4 : boardredrawn = 1
+		If i="0" Then toggleter += 1 : toggleter Mod= 4 : boardredrawn = 1
+
+
+		glClear (GL_COLOR_BUFFER_BIT Or GL_DEPTH_BUFFER_BIT)
+
+		viewport (VMENU)
+		drawmenu ()
+
+		viewport (VBOARD)
+		If showtex Then
+			showtexture ()
+		Else
+			drawboard ()
+			drawstones ()
+		EndIf
+
+		hovering = 0
+		If setpossible (x, y)=1 Then
+			If wantinput=0 Then
+				drawstone (x, y, stonenr)		' draw hovering stone
+				If showhov Then
+					stones(stonenr).x = x
+					stones(stonenr).y = y
+					hovering = 1
 				EndIf
 			EndIf
 		EndIf
@@ -1683,49 +1775,19 @@ Sub main ()
 
 		checklibs ()
 		grouplibs ()
-		killstones ()
+		If killstones () Then
+			redrawboard ()
+			makeconnections ()
+			If togglecut>0 Then cutconnections ()
+		EndIf
 
 		If shownum Then drawlibs ()
 
-		If showarea Then calcarea ()
-
-
-		If gametype=1 Or gametype=2 Then
-			If spieler=1 And stonenr Mod 2=0 Or spieler=2 And stonenr Mod 2=1 Then
-				If empfangen (x, y)=1 Then
-					setstone (x, y)
-				EndIf
-			EndIf
+		If showarea Then
+			If boardredrawn Then calcarea ()
+			drawarea ()
 		EndIf
 
-
-		If wantinput Then		' manual input of coordinates of stone to set
-			If myinput (x, y)<>0 Then		' byref! sets x and y
-				setstone (x, y)
-			EndIf
-			wantinput = 0
-		EndIf
-
-
-		i = InKey
-		If i=Chr(27) Then Exit Do
-
-		If i="s" Then savestones ()
-		If i="l" Then loadstones () : redrawboard ()
-		If i="m" Then stonenr += 1
-		If i="k" Then
-			t = findneareststone (x, y)
-			If t>0 Then killstone (t) : redrawboard ()
-		EndIf
-		If i="i" Then wantinput = 1
-		If i="p" Then showtex Xor= 1
-
-		If i="f" Then
-			togglefullscreen Xor= 1
-			openscreen ()
-		EndIf
-		
-		If i="a" Then showar Xor= 1
 		If showar Then
 			For x = 0 To SAS-1
 				For y = 0 To SAS-1
@@ -1733,18 +1795,6 @@ Sub main ()
 				Next
 			Next
 		EndIf
-
-		If i="t" Then showarea Xor=1
-
-		If i="1" Then showinf Xor= 1
-		If i="2" Then showlib Xor= 1
-		If i="3" Then shownum Xor= 1
-		If i="4" Then showcon Xor= 1
-		If i="5" Then showhov Xor= 1
-
-		If i="8" Then togglecut += 1 : togglecut Mod= 3
-		If i="9" Then togglegrp += 1 : togglegrp Mod= 4
-		If i="0" Then toggleter += 1 : toggleter Mod= 4
 
 		Flip
 	Loop
