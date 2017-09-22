@@ -141,3 +141,21 @@ So far the technical side, now for a bit of philosophy: so now we have four diff
 
 Note: while it is always possible to get a touching connection with one stone, it is not always possible to get a touching connection with two stones at the same time. This is because on a 4-connected grid the two liberties curves of two stones can intersect without sharing a pixel. The solution would be to use a 6-connected (hexagonal) or 8-connected (like now plus diagonals) gird as representation of the continuous board. So as long as this is not implemented, the touching connection is replaced with a "close" connection that is one pixel wider. This way the resulting curve is guaranteed to have overlapping pixels and you can always get "close" connections with two stones simultaneously. Of course the test for "near" is now carried out with tests for "close". (The board edges are still "touching".)
 
+Keys
+----
+
+		ESC     quit
+		LMB     place stone
+		RMB     pan
+		wheel   zoom
+		p       show pixels
+		i       input coordinates to place stone
+		t       show territory
+		f       fullscreen/windowed toggle
+		s       save game to file
+		l       load game from file
+		k       kill stone near mouse
+		m       increase move (change color, pass)
+		1-5     show influence, liberties, numbers, connections
+		7-0     setting type, connection cutting, groups and territory switches
+
