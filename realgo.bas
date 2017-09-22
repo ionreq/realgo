@@ -14,7 +14,7 @@
 		k		kill stone near mouse
 		m		increase move (change color, pass)
 		1-5	show influence, liberties, numbers, weak, strong connections
-		8-0	connection cutting, groups and territory switches
+		7-0	setting type, connection cutting, groups and territory switches
 
 
 	gemacht
@@ -61,6 +61,7 @@
 			"touching" dann raus, und "near" ist dann natürlich für die "close" distanz
 		geheime taste zum anzeigen von ar()
 		mainloop so, dass area nicht jedesmal neu berechnet wird
+		schalter wo man nur auf schinttpunkte oder nur auf linien setzen kann
 
 	evtl
 		freiheiten als schwarze und weiße freiheiten anzeigen
@@ -204,7 +205,7 @@ Dim Shared As queue qu
 Dim Shared As Integer showinf, showlib, showcon, shownum, showhov		' toggle switches for display
 Dim Shared As Integer showarea
 
-Dim Shared As Integer togglecut, togglegrp, toggleter		' toggle switches for variations
+Dim Shared As Integer toggleset, togglecut, togglegrp, toggleter		' toggle switches for variations
 
 Dim Shared As Integer lastmovex, lastmovey	' coos of last stone set
 
@@ -736,6 +737,8 @@ End Sub
 Function setpossible (mx As Integer, my As Integer) As Integer
 	Dim As Integer c
 	If mx>=0 And mx<BAS And my>=0 And my<BAS Then
+		If toggleset=2 Then If Not ((mx+RR) Mod DD=0 And (my+RR) Mod DD=0) Then Return 0
+		If toggleset=1 Then If Not ((mx+RR) Mod DD=0 Or (my+RR) Mod DD=0) Then Return 0
 		c = ba(mx,my)
 		If c=CBOARD Or c=CBOARDLINES Or c=CLIB Then Return 1
 	EndIf
@@ -1312,11 +1315,12 @@ End Function
 ' draw the menu for the switches
 '
 Sub drawmenu ()
-	Dim As String ts(2), tc(3), tt(4)
+	Dim As String ts(2), tc(3), tt(4), ty(3)
 
 	ts(0) = "off" : ts(1) = "on"
 	tc(0) = "none" : tc(1) = "longer" : tc(2) = "both"
 	tt(0) = "close" : tt(1) = "strong" : tt(2) = "near" : tt(3) = "weak"
+	ty(0) = "everywhere" : ty(1) = "lines" : ty(2) = "points"
 
 	mycolor (CBOARD)
 
@@ -1326,11 +1330,12 @@ Sub drawmenu ()
 	mytextout (30, 30*16, 0, "4) show connections: "+ts(showcon))
 	mytextout (30, 29*16, 0, "5) hovering connections: "+ts(showhov))
 
-	mytextout (30, 27*16, 0, "8) connection cutting: "+tc(togglecut))
-	mytextout (30, 26*16, 0, "9) connection groups: "+tt(togglegrp))
-	mytextout (30, 25*16, 0, "0) connection territory: "+tt(toggleter))
+	mytextout (30, 27*16, 0, "7) setting type: "+ty(toggleset))
+	mytextout (30, 26*16, 0, "8) connection cutting: "+tc(togglecut))
+	mytextout (30, 25*16, 0, "9) connection groups: "+tt(togglegrp))
+	mytextout (30, 24*16, 0, "0) connection territory: "+tt(toggleter))
 
-	mytextout (30, 23*16, 0, "last move: "+Str(lastmovex)+" "+Str(lastmovey))
+	mytextout (30, 22*16, 0, "last move: "+Str(lastmovex)+" "+Str(lastmovey))
 End Sub
 
 
@@ -1496,14 +1501,14 @@ End Sub
 '
 Function myinput (ByRef x As Integer, ByRef y As Integer) As Integer
 	Dim As String i, s
-	Dim As Integer t
+	Dim As Integer t, nx, ny, dx, dy
 
 	viewport (VMENU)
 	glDisable (GL_DEPTH_TEST)
 	Do
-		mybox (30, 22*16+4, 200, 20*16+4, 0.1, CBOARD)
+		mybox (30, 21*16+4, 200, 19*16+4, 0.1, CBOARD)
 		mycolor (stonecolor (stonenr))
-		mytextout (38, 21*16, 0.1, "input x,y: "+s)
+		mytextout (38, 20*16, 0.1, "input x,y: "+s)
 		i = InKey
 		If i=Chr(13) Then Exit Do
 		If i=Chr(8) Then s = Left(s,Len(s)-1) : Continue Do
@@ -1511,10 +1516,28 @@ Function myinput (ByRef x As Integer, ByRef y As Integer) As Integer
 		Flip
 	Loop
 	glEnable (GL_DEPTH_TEST)
+
 	t = InStr(s,",")
 	If t=0 Then Return 0
 	x = Val(Mid(s,1,t-1))
 	y = Val(Mid(s,t+1,Len(s)-t))
+
+	If x<RR Then x = RR
+	If x>BAS-1-RR Then x = BAS-1-RR
+	If y<RR Then y = RR
+	If y>BAS-1-RR Then y = BAS-1-RR
+
+	If toggleset=2 Then
+		x = RR+Int(x/DD)*DD
+		y = RR+Int(y/DD)*DD
+	ElseIf toggleset=1 Then
+		nx = RR+Int(x/DD)*DD
+		ny = RR+Int(y/DD)*DD
+		dx = Abs(x-nx)
+		dy = Abs(y-ny)
+		If dx<dy Then x = nx Else y = ny
+	EndIf
+
 	Return 1
 End Function
 
@@ -1632,12 +1655,10 @@ Sub main ()
 		If spieler=2 Then ChDir (GETMAILDIR1)
 	EndIf
 
-	showinf = 0
 	showlib = 1
 	showcon = 1
 	showhov = 1
 	shownum = 1
-	showarea = 0
 	togglecut = 1
 	togglegrp = 3
 	toggleter = 3
@@ -1732,6 +1753,7 @@ Sub main ()
 		If i="4" Then showcon Xor= 1
 		If i="5" Then showhov Xor= 1
 
+		If i="7" Then toggleset += 1 : toggleset Mod= 3
 		If i="8" Then togglecut += 1 : togglecut Mod= 3 : boardredrawn = 1
 		If i="9" Then togglegrp += 1 : togglegrp Mod= 4 : boardredrawn = 1
 		If i="0" Then toggleter += 1 : toggleter Mod= 4 : boardredrawn = 1
