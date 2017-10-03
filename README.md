@@ -158,4 +158,7 @@ Keys
 		m       increase move (change color, pass)
 		1-5     show influence, liberties, numbers, connections
 		7-0     setting type, connection cutting, groups and territory switches
+		q	switch stone scoring
+		w	switch captured stone scoring
+		e	switch for innner territory scoring
 
