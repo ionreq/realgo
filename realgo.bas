@@ -13,8 +13,11 @@
 		l		load game from file
 		k		kill stone near mouse
 		m		increase move (change color, pass)
-		1-5	show influence, liberties, numbers, weak, strong connections
+		1-5	show influence, liberties, numbers, connections
 		7-0	setting type, connection cutting, groups and territory switches
+		q		switch stone scoring
+		w		switch captured stone scoring
+		e		switch for innner territory scoring
 
 
 	gemacht
@@ -62,15 +65,19 @@
 		geheime taste zum anzeigen von ar()
 		mainloop so, dass area nicht jedesmal neu berechnet wird
 		schalter wo man nur auf schinttpunkte oder nur auf linien setzen kann
-
-	evtl
-		freiheiten als schwarze und weiße freiheiten anzeigen
 		stein der beim schlagen selber 0 freiheiten hat, überlebt
 			dazu einfach zuerst nur freiheiten vom gegner checken und evtl killen, dann erst eigene
 		ko regel: wenn vorher ein einzelner stein geschlagen wurde,
 			kann der nicht sofort im nächsten zug ersetzt werden,
 			d.h. setzen in den kreis ist nicht möglich
-			dazu muss im savefile gespeichert werden wo das war
+		neue definition von territorium: faltung von stein mit pixeln innerhalb freiheiten
+		territorium berechnung: bei setzen auf points/lines auch nur dort steine hinmalen
+		neue punktezählung: jeder stein zählt mit seinen pixeln
+		neue punktezählung: geschlagene steine werden abgezogen
+		schalter für punktezählung
+		schalter für alte punktezählung und territorium
+
+	evtl
 		steine ausblenden (für area besser sichtbar)
 		cut mit gleicher distanz könnte auch bleiben. evtl schalter dafür
 		config file mit schaltern, email namen, save file name, fullscreen/window, etc.
@@ -84,10 +91,18 @@
 		connections gehen von rand zu rand, nicht von mittelpunkt zu mittelpunkt
 			stein selber cuttet auch, d.h. connections gehen nicht durch steine, d3 ist grenzfall
 		hovering stone: freiheiten, geschlagene gruppen, alles anzeigen (irgendwie eingefärbt zb)
-
-	todo
+		influence weg. nur steine löschen freiheiten
+			ein stein wird geschlagen, wenn nirgendwo auf seiner freiheitenkurve mehr 1/6 durchgehend frei ist
+			dh sobald man an einen anderen stein so nahe rangeht, daß 1/6 geschützt ist, ist man verbunden
+			geht das überhaupt, oder muss man dazu zb erlauben, dass steine eigener farbe freiheiten
+			nicht löschen?
 		area boxen mit vertexarray?
 		makestone noch für den rand (nix mehr solution of equation, das werden tests)
+		schalter für altes schlagen (wo man selber auch mit weg ist wenn keine freiheiten)
+		ko im savefile speichern
+		sachen auch zum anklicken machen, nicht nur tasten
+
+	todo
 
 '/
 
@@ -181,9 +196,10 @@ Dim Shared As stone stones(MAXSTONES)		' stone positions
 Dim Shared As Integer stonenr		' move number, starts with 1=black
 
 Dim Shared As Integer maxlib		' number of liberties of a stone
+Dim Shared As Integer stonearea	' number of pixels of the stone interior
 
 Dim Shared As UByte ba(BAS,BAS)		' board array
-Dim Shared As UByte bb(BAS,BAS)		' board array for area calc
+Dim Shared As UByte bb(BAS,BAS),bc(BAS,BAS)		' board arrays for area calc
 
 Type connection
 	As Integer c		' color 1=black 2=white
@@ -206,6 +222,7 @@ Dim Shared As Integer showinf, showlib, showcon, shownum, showhov		' toggle swit
 Dim Shared As Integer showarea
 
 Dim Shared As Integer toggleset, togglecut, togglegrp, toggleter		' toggle switches for variations
+Dim Shared As Integer togglestone, togglecaptured, toggleinner
 
 Dim Shared As Integer lastmovex, lastmovey	' coos of last stone set
 
@@ -246,11 +263,15 @@ Const VBOARD = 2
 
 Dim Shared As Integer scorew, scoreb		' territory counting
 
-Dim Shared As UByte Ptr texdat		' texture display
+Dim Shared As UByte Ptr texdat		' texture memory
 Dim Shared As Integer texname
 
 Dim Shared As Integer listready		' opengl calllist for area display
 Dim Shared As Integer boardredrawn
+
+Dim Shared As Integer kox, koy		' last captured single stone position for ko detection
+
+Dim Shared As Integer capturedb, capturedw		' number of captured black/white stones
 
 
 Declare Sub main
@@ -584,6 +605,7 @@ Sub makestone ()
 	For x = -RR-1 To RR+1		' draw close circumference (stone circumference +1 pixel)
 		For y = -RR-1 To RR+1
 			If sa(RR+1+x,RR+1+y)=0 And x^2+y^2<=(RR+1.5)^2 Then sa(RR+1+x,RR+1+y) = CCLOSECIRC
+			If sa(RR+1+x,RR+1+y)=CSTONE Then stonearea += 1
 		Next
 	Next
 
@@ -606,7 +628,7 @@ Sub makestone ()
 
 	maxlib = cnt
 
-	For y = -RR-1 To RR+1
+	For y = -RR-1 To RR+1			' copy to bigger array
 		For x = -RR-1 To RR+1
 			If sa(RR+1+x,RR+1+y)>0 Then
 				ar(mx+x,my+y) = sa(RR+1+x,RR+1+y)
@@ -625,7 +647,7 @@ Sub makestone ()
 		Next
 	Next
 
-	For t = 0 To cnt-1
+	For t = 0 To cnt-1		' because of this we dont have to test for boundaries
 		xp(t-cnt) = xp(t) : yp(t-cnt) = yp(t)
 		xp(t+cnt) = xp(t) : yp(t+cnt) = yp(t)
 	Next
@@ -734,12 +756,13 @@ End Sub
 
 ' determine if stone placement is possible at a position
 '
-Function setpossible (mx As Integer, my As Integer) As Integer
+Function setpossible (x As Integer, y As Integer) As Integer
 	Dim As Integer c
-	If mx>=0 And mx<BAS And my>=0 And my<BAS Then
-		If toggleset=2 Then If Not ((mx+RR) Mod DD=0 And (my+RR) Mod DD=0) Then Return 0
-		If toggleset=1 Then If Not ((mx+RR) Mod DD=0 Or (my+RR) Mod DD=0) Then Return 0
-		c = ba(mx,my)
+	If x>=0 And x<BAS And y>=0 And y<BAS Then
+		If toggleset=2 Then If Not ((x+RR) Mod DD=0 And (y+RR) Mod DD=0) Then Return 0
+		If toggleset=1 Then If Not ((x+RR) Mod DD=0 Or (y+RR) Mod DD=0) Then Return 0
+		If kox>0 Then If (x-kox)^2+(y-koy)^2<=RR^2 Then Return 0
+		c = ba(x,y)
 		If c=CBOARD Or c=CBOARDLINES Or c=CLIB Then Return 1
 	EndIf
 	Return 0
@@ -1107,19 +1130,22 @@ End Sub
 ' kills a stone
 '
 Sub killstone (t As Integer)
+	kox = stones(t).x
+	koy = stones(t).y
 	stones(t).x = 0
 	stones(t).y = 0
+	If t Mod 2=0 Then capturedw += 1 Else capturedb += 1
 End Sub
 
 
 ' remove stones with 0 group libs, redraw board if necessary
 '
-Function killstones () As Integer
+Function killstones (c As Integer) As Integer
 	Dim As Integer t, gef
 
 	gef = 0
 	For t = 0 To MAXSTONES-1
-		If stones(t).x>0 And stones(t).f=0 Then killstone (t) : gef = 1
+		If c Mod 2=t Mod 2 And stones(t).x>0 And stones(t).f=0 Then killstone (t) : gef += 1
 	Next
 	Return gef
 End Function
@@ -1145,10 +1171,40 @@ Sub searchnearest (ByRef mx As Integer, ByRef my As Integer)
 End Sub
 
 
+' draw stone for territory convolution
+'
+Sub convstone (mx As Integer, my As Integer, c As Integer)
+	Dim As Integer x, y, gef
+
+	If toggleset=0 Then
+		gef = 0
+		For x = -1 To 1		' find edge points, we draw the full circle only there
+			For y = -1 To 1
+				If bc(mx+x,my+y) = CINF Then gef = 1
+			Next
+		Next
+	Else
+		gef = 1
+	EndIf
+	
+	If gef Then
+		If toggleset=0 Or toggleset>0 And setpossible (mx, my) Then
+			For x = -RR To RR
+				For y = -RR To RR
+					If ar((SAS-1)/2+x,(SAS-1)/2+y)=CSTONE Then bb(mx+x,my+y) = c
+				Next
+			Next
+		EndIf
+	Else
+		bb(mx,my) = c		' in the interior its enough to just set the pixel
+	EndIf
+End Sub
+
+
 ' calc players territory
 '
 Sub calcarea ()
-	Dim As Integer x, y, t, x2, y2, gef, mx, my, st
+	Dim As Integer x, y, t, x2, y2, gef, mx, my, st, c
 
 	For y = 0 To BAS-1			' empty board
 		For x = 0 To BAS-1
@@ -1205,6 +1261,24 @@ Sub calcarea ()
 		Next
 	Loop
 
+	If toggleinner Then
+		For y = 0 To BAS-1		' filter out territories without liberties
+			For x = 0 To BAS-1
+				c = ba(x,y)
+				If Not (c=CBOARD Or c=CBOARDLINES Or c=CLIB) Then bb(x,y) = CINF
+				bc(x,y) = bb(x,y)
+				bb(x,y) = CINF
+			Next
+		Next
+	
+		For y = 0 To BAS-1		' convolution with stone disk
+			For x = 0 To BAS-1
+				If bc(x,y)=CWHITE Then convstone (x, y, CWHITE)
+				If bc(x,y)=CBLACK Then convstone (x, y, CBLACK)
+			Next
+		Next
+	EndIf
+
 	scoreb = 0
 	scorew = 0
 	For y = 0 To BAS-1		' count pixels
@@ -1213,6 +1287,13 @@ Sub calcarea ()
 			If bb(x,y)=CWHITE Then scorew += 1
 		Next
 	Next
+	
+	If togglestone Then		' count stones
+		For t = 0 To MAXSTONES-1
+			If stones(t).x>0 Then If t Mod 2=0 Then scorew += stonearea Else scoreb += stonearea
+		Next
+	EndIf
+
 	listready = 0
 	boardredrawn = 0
 End Sub
@@ -1222,7 +1303,8 @@ End Sub
 '
 Function myformat (n As Double) As String
 	Dim As String s, t
-	s = Str(Int(n))
+	If n<0 Then n = -n : t = "-"
+	s = t+Str(Int(n))
 	s = Space(3-Len(s))+s
 	t = Str(Int(n*1000)-Int(n)*1000)
 	t = String(3-Len(t),"0")+t
@@ -1237,8 +1319,13 @@ Sub drawarea ()
 
 	viewport (VMENU)
 	mybox (20, 36*16+4, 200, 39*16+4, 0.1, CBOARD)
-	mycolor (CBLACK) : mytextout (30, 38*16, 0.2, "b "+myformat(scoreb/(DD^2)))
-	mycolor (CWHITE) : mytextout (30, 37*16, 0.2, "w "+myformat(scorew/(DD^2)))
+	If togglecaptured Then
+		mycolor (CBLACK) : mytextout (30, 38*16, 0.2, "b "+myformat(scoreb/stonearea-capturedb)+" (-"+Str(capturedb)+")")
+		mycolor (CWHITE) : mytextout (30, 37*16, 0.2, "w "+myformat(scorew/stonearea-capturedw)+" (-"+Str(capturedw)+")")
+	Else
+		mycolor (CBLACK) : mytextout (30, 38*16, 0.2, "b "+myformat(scoreb/stonearea))
+		mycolor (CWHITE) : mytextout (30, 37*16, 0.2, "w "+myformat(scorew/stonearea))
+	EndIf
 
 	viewport (VBOARD)
 	If listready=0 Then
@@ -1335,7 +1422,11 @@ Sub drawmenu ()
 	mytextout (30, 25*16, 0, "9) connection groups: "+tt(togglegrp))
 	mytextout (30, 24*16, 0, "0) connection territory: "+tt(toggleter))
 
-	mytextout (30, 22*16, 0, "last move: "+Str(lastmovex)+" "+Str(lastmovey))
+	mytextout (30, 22*16, 0, "q) score stones: "+ts(togglestone))
+	mytextout (30, 21*16, 0, "w) score captured: "+ts(togglecaptured))
+	mytextout (30, 20*16, 0, "e) score inner: "+ts(toggleinner))
+
+	mytextout (30, 18*16, 0, "last move: "+Str(lastmovex)+" "+Str(lastmovey))
 End Sub
 
 
@@ -1348,6 +1439,8 @@ Sub setstone (x As Integer, y As Integer)
 	stonenr += 1
 	lastmovex = x
 	lastmovey = y
+	kox = 0
+	koy = 0
 End Sub
 
 
@@ -1506,9 +1599,9 @@ Function myinput (ByRef x As Integer, ByRef y As Integer) As Integer
 	viewport (VMENU)
 	glDisable (GL_DEPTH_TEST)
 	Do
-		mybox (30, 21*16+4, 200, 19*16+4, 0.1, CBOARD)
+		mybox (30, 17*16+4, 200, 15*16+4, 0.1, CBOARD)
 		mycolor (stonecolor (stonenr))
-		mytextout (38, 20*16, 0.1, "input x,y: "+s)
+		mytextout (38, 16*16, 0.1, "input x,y: "+s)
 		i = InKey
 		If i=Chr(13) Then Exit Do
 		If i=Chr(8) Then s = Left(s,Len(s)-1) : Continue Do
@@ -1608,10 +1701,10 @@ Sub openscreen ()
 
 	ScreenControl (FB.GET_WINDOW_HANDLE, Cast (Integer, hwnd))
 	If togglefullscreen=0 Then
-		'MoveWindow (hwnd, 0, 0, SCRX, SCRY, 1)
+		MoveWindow (hwnd, 0, 0, SCRX, SCRY, 1)
 		'SetForegroundWindow (hwnd)
 		'SetActiveWindow (hwnd)
-		SetWindowPos (hwnd, HWND_TOPMOST, 0, 0, SCRX, SCRY, SWP_NOSIZE Or SWP_SHOWWINDOW)
+		'SetWindowPos (hwnd, HWND_TOPMOST, 0, 0, SCRX, SCRY, SWP_NOSIZE Or SWP_SHOWWINDOW)
 	EndIf
 	hdc = GetDC (hwnd)
 	hglrc = wglCreateContext (hdc)
@@ -1648,7 +1741,7 @@ Sub main ()
 	ReDim conl(MAXCONS)
 
 	BAS = BS*DD+1
-	ReDim ba(BAS,BAS), bb(BAS,BAS)
+	ReDim ba(BAS,BAS), bb(BAS,BAS), bc(BAS,BAS)
 
 	If gametype=1 Then
 		If spieler=1 Then ChDir (GETMAILDIR2)
@@ -1662,6 +1755,8 @@ Sub main ()
 	togglecut = 1
 	togglegrp = 3
 	toggleter = 3
+	togglestone = 1
+	toggleinner = 1
 
 	initboard ()
 	makestone ()
@@ -1758,6 +1853,9 @@ Sub main ()
 		If i="9" Then togglegrp += 1 : togglegrp Mod= 4 : boardredrawn = 1
 		If i="0" Then toggleter += 1 : toggleter Mod= 4 : boardredrawn = 1
 
+		If i="q" Then togglestone Xor= 1
+		If i="w" Then togglecaptured Xor= 1
+		If i="e" Then toggleinner Xor= 1
 
 		glClear (GL_COLOR_BUFFER_BIT Or GL_DEPTH_BUFFER_BIT)
 
@@ -1797,7 +1895,17 @@ Sub main ()
 
 		checklibs ()
 		grouplibs ()
-		If killstones () Then
+		t = killstones (stonenr)
+		If t>1 Then kox = 0 : koy = 0
+		If t>0 Then
+			redrawboard ()
+			makeconnections ()
+			If togglecut>0 Then cutconnections ()
+		EndIf
+
+		checklibs ()
+		grouplibs ()
+		If killstones (stonenr+1) Then
 			redrawboard ()
 			makeconnections ()
 			If togglecut>0 Then cutconnections ()
